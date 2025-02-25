@@ -59,3 +59,62 @@ pnpm dev
 ```
 
 Your app template should now be running on [localhost:3000](http://localhost:3000/).
+
+```mermaid
+flowchart TD
+  %% User sends chat messages
+  A[User] --> B[Chat Input]
+  B --> C[Chat Component]
+  C --> D[Submit Chat Message]
+
+  %% Chat processing
+  D --> E{Message Contains\nArtifact Command?}
+  E -- Yes --> F[Trigger Artifact Mode]
+  E -- No --> G[Process as Regular Chat Message]
+
+  %% Activating artifact UI via hook
+  F --> H[useArtifact Hook\nUpdates Artifact State]
+  H --> I[Artifact UI Component\nRenders Artifact View]
+  I --> J[Artifact Actions & Versioning]
+
+  %% Real-time streaming updates
+  D --> K[DataStreamHandler\nListens to Streams]
+  K --> I
+
+  %% (Optional) Server flow for document creation/updating
+  I -- "Sends create/update" --> L[Server API]
+  L --> M[Document Handler]
+
+  %% Notes
+  classDef client fill:#e0f7fa,stroke:#006064,stroke-width:1px;
+  classDef server fill:#f1f8e9,stroke:#33691e,stroke-width:1px;
+
+  class Client_Side client;
+  class Server_Side server;
+```
+
+```mermaid
+graph LR
+    A[User interacts with Chat] --> B{AI processes message\n(AI Model & Prompts)}
+    B -->|"createDocument" trigger| C[Tool Invocation]
+    C --> D[Backend Data Stream\n(DataStreamHandler)]
+    D --> E[State Update\n(useArtifact Hook)]
+    E --> F[Render Artifact UI\n(Artifact Component)]
+    F -->|sets isVisible=true| G[[Artifact Panel]]
+    H[Document Preview Click] --> G
+
+    subgraph Artifact_Creation_Flow["Artifact Creation Flow"]
+        B --> C --> D --> E --> F
+    end
+
+    subgraph Visibility_Trigger["Visibility Triggers"]
+        F --> G
+        H --> G
+    end
+
+    style G fill:#f9f,stroke:#333,stroke-width:2px
+    classDef artifactFlow fill:#e6f4ea,stroke:#0fa37f
+    classDef visibilityTrigger fill:#fae6e6,stroke:#dc2626
+    class Artifact_Creation_Flow artifactFlow
+    class Visibility_Trigger visibilityTrigger
+```
