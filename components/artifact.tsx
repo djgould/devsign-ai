@@ -31,6 +31,7 @@ import { codeArtifact } from "@/artifacts/code/client";
 import { sheetArtifact } from "@/artifacts/sheet/client";
 import { textArtifact } from "@/artifacts/text/client";
 import equal from "fast-deep-equal";
+import React from "react";
 
 export const artifactDefinitions = [
   textArtifact,
@@ -246,6 +247,12 @@ function PureArtifact({
   const { width: windowWidth, height: windowHeight } = useWindowSize();
   const isMobile = windowWidth ? windowWidth < 768 : false;
 
+  // Add this to fix hydration issues with window dimensions
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const artifactDefinition = artifactDefinitions.find(
     (definition) => definition.kind === artifact.kind
   );
@@ -258,11 +265,15 @@ function PureArtifact({
   useEffect(() => {
     // This only runs on the client, so it's safe to update state
     const timer = setTimeout(() => {
-      // Clear any unnecessary initialization code since we're using the EnableArtifactMode component
+      // Force artifact to be visible
+      setArtifact((current) => ({
+        ...current,
+        isVisible: true,
+      }));
     }, 0);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [setArtifact]);
 
   useEffect(() => {
     if (artifact.documentId !== "init") {
@@ -272,8 +283,14 @@ function PureArtifact({
           setMetadata,
         });
       }
+
+      // Ensure content is visible
+      setArtifact((current) => ({
+        ...current,
+        isVisible: true,
+      }));
     }
-  }, [artifact.documentId, artifactDefinition, setMetadata]);
+  }, [artifact.documentId, artifactDefinition, setMetadata, setArtifact]);
 
   return (
     <AnimatePresence>
@@ -284,7 +301,7 @@ function PureArtifact({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { delay: 0.4 } }}
         >
-          {!isMobile && (
+          {!isMobile && isMounted && (
             <motion.div
               className="fixed bg-background h-dvh"
               initial={{
@@ -391,8 +408,8 @@ function PureArtifact({
                     opacity: 1,
                     x: 0,
                     y: 0,
-                    height: windowHeight,
-                    width: windowWidth ? windowWidth : "calc(100dvw)",
+                    height: windowHeight || "100vh",
+                    width: windowWidth || "100vw",
                     borderRadius: 0,
                     transition: {
                       delay: 0,
@@ -406,10 +423,12 @@ function PureArtifact({
                     opacity: 1,
                     x: 400,
                     y: 0,
-                    height: windowHeight,
-                    width: windowWidth
-                      ? windowWidth - 400
-                      : "calc(100dvw-400px)",
+                    height: windowHeight || "100vh",
+                    width: isMounted
+                      ? windowWidth
+                        ? windowWidth - 400
+                        : "calc(100vw - 400px)"
+                      : "calc(100vw - 400px)",
                     borderRadius: 0,
                     transition: {
                       delay: 0,
@@ -469,26 +488,38 @@ function PureArtifact({
               />
             </div>
 
-            <div className="dark:bg-muted bg-background h-full overflow-y-scroll !max-w-full items-center">
-              <artifactDefinition.content
-                title={artifact.title}
-                content={
-                  isCurrentVersion
-                    ? artifact.content
-                    : getDocumentContentById(currentVersionIndex)
-                }
-                mode={mode}
-                status={artifact.status}
-                currentVersionIndex={currentVersionIndex}
-                suggestions={[]}
-                onSaveContent={saveContent}
-                isInline={false}
-                isCurrentVersion={isCurrentVersion}
-                getDocumentContentById={getDocumentContentById}
-                isLoading={isDocumentsFetching && !artifact.content}
-                metadata={metadata}
-                setMetadata={setMetadata}
-              />
+            <div className="dark:bg-muted bg-background flex-1 overflow-y-auto !max-w-full p-4">
+              {/* Debug output to check content */}
+              {process.env.NODE_ENV === "development" && (
+                <div className="mb-2 p-2 bg-yellow-100 dark:bg-yellow-900 text-xs">
+                  <div>Content length: {artifact.content?.length || 0}</div>
+                  <div>Kind: {artifact.kind}</div>
+                  <div>Status: {artifact.status}</div>
+                  <div>Is visible: {artifact.isVisible ? "true" : "false"}</div>
+                </div>
+              )}
+
+              <div className="min-h-[500px] flex flex-col">
+                <artifactDefinition.content
+                  title={artifact.title}
+                  content={
+                    isCurrentVersion
+                      ? artifact.content
+                      : getDocumentContentById(currentVersionIndex)
+                  }
+                  mode={mode}
+                  status={artifact.status}
+                  currentVersionIndex={currentVersionIndex}
+                  suggestions={[]}
+                  onSaveContent={saveContent}
+                  isInline={false}
+                  isCurrentVersion={isCurrentVersion}
+                  getDocumentContentById={getDocumentContentById}
+                  isLoading={isDocumentsFetching && !artifact.content}
+                  metadata={metadata}
+                  setMetadata={setMetadata}
+                />
+              </div>
 
               <AnimatePresence>
                 {isCurrentVersion && (

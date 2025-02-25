@@ -7,7 +7,6 @@ import { getChatById, getMessagesByChatId } from "@/lib/db/queries";
 import { convertToUIMessages } from "@/lib/utils";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
-import { EnableArtifactMode } from "@/components/enable-artifact-mode";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -48,7 +47,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           isReadonly={session?.user?.id !== chat.userId}
         />
         <DataStreamHandler id={id} />
-        <EnableArtifactMode />
       </>
     );
   }
@@ -63,7 +61,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         isReadonly={session?.user?.id !== chat.userId}
       />
       <DataStreamHandler id={id} />
-      <EnableArtifactMode />
     </>
   );
 }
