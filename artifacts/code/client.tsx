@@ -222,7 +222,7 @@ const reactTemplateFiles = {
         version: "0.0.0",
         type: "module",
         scripts: {
-          dev: "vite --port 3000",
+          dev: "vite --port 3111",
           build: "vite build",
           preview: "vite preview",
         },
@@ -265,7 +265,11 @@ export default defineConfig({
     },
   },
   server: {
-    host: true,
+    host: '0.0.0.0',
+    port: 3111,
+    hmr: {
+      clientPort: 3111
+    }
   },
 });
 `,
@@ -511,7 +515,6 @@ async function executeReactComponent(
   error?: string;
 }> {
   const outputContent: Array<ConsoleOutputContent> = [];
-  let reactUrl = "";
 
   try {
     if (!webcontainer) {
@@ -707,47 +710,42 @@ export default App;
     });
 
     try {
+      // Create a promise that will be resolved when we get the server URL
+      let resolveUrlPromise: (url: string) => void;
+      let rejectUrlPromise: (error: Error) => void;
+
+      const urlPromise = new Promise<string>((resolve, reject) => {
+        resolveUrlPromise = resolve;
+        rejectUrlPromise = reject;
+      });
+
+      // Set a timeout in case we don't get the server-ready event
+      let timeoutId = setTimeout(() => {
+        console.warn(
+          "⚠️ Server-ready event timeout - falling back to alternatives"
+        );
+        // Don't reject yet - we'll try fallback mechanisms
+      }, 15000);
+
+      // Start the dev server
       const devProcess = await webcontainer.spawn("npm", ["run", "dev"]);
+      console.log("🚀 Dev server started");
 
-      // Wait for the server to start
-      let isServerStarted = false;
-      const serverStartTimeout = setTimeout(() => {
-        if (!isServerStarted) {
-          outputContent.push({
-            type: "text",
-            value:
-              "⚠️ Server startup is taking longer than expected, but will continue in background.",
-          });
-        }
-      }, 5000);
+      // Get server output for debugging and fallback URL detection
+      const outputChunks: string[] = [];
 
-      // Collect dev server output
+      // Process the output to collect it and look for URLs as a fallback
       devProcess.output.pipeTo(
         new WritableStream({
           write(chunk) {
             const output = chunk.toString();
-            console.log("[Vite]", output);
+            outputChunks.push(output);
 
-            // Extract the server URL
-            if (output.includes("Local:") && !isServerStarted) {
-              const match = output.match(/Local:\s*(http:\/\/\S+)/);
-              if (match && match[1]) {
-                clearTimeout(serverStartTimeout);
-                reactUrl = match[1];
-                isServerStarted = true;
-                outputContent.push({
-                  type: "text",
-                  value: `🌐 React app running at: ${reactUrl}`,
-                });
-              }
-            }
-
-            // Add significant logs to output
+            // Add significant logs to the console
             if (
-              output.includes("started") ||
+              output.includes("Local:") ||
               output.includes("ready in") ||
-              output.includes("error") ||
-              output.includes("listening on")
+              output.includes("started")
             ) {
               outputContent.push({
                 type: "text",
@@ -758,35 +756,110 @@ export default App;
         })
       );
 
-      // Wait for the server URL or timeout
-      const serverUrl = await new Promise<string>((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (reactUrl) {
-            clearInterval(checkInterval);
-            resolve(reactUrl);
-          }
-        }, 100);
+      // Try to use the server-ready event if available
+      if (typeof webcontainer.on === "function") {
+        console.log("✅ Using server-ready event listener approach");
 
-        // Default URL if we can't extract it after 10 seconds
+        // The proper way to listen for the server-ready event
+        webcontainer.on("server-ready", (port: number, url: string) => {
+          console.log(`🎯 Server ready on port ${port} at ${url}`);
+          clearTimeout(timeoutId);
+
+          outputContent.push({
+            type: "text",
+            value: `🌐 Server ready at: ${url}`,
+          });
+
+          resolveUrlPromise(url);
+        });
+      } else {
+        console.warn(
+          "⚠️ server-ready event not available, using fallback methods"
+        );
+
+        // Fallback 1: Try to use network.getUrl() API
+        if (
+          webcontainer.network &&
+          typeof webcontainer.network.getUrl === "function"
+        ) {
+          // Wait a bit for the server to start
+          setTimeout(async () => {
+            try {
+              // Try to get a URL using the network API
+              const url = await webcontainer.network.getUrl();
+              console.log("🔄 Found URL via network API:", url);
+
+              if (url) {
+                clearTimeout(timeoutId);
+                outputContent.push({
+                  type: "text",
+                  value: `🌐 Server ready at: ${url}`,
+                });
+                resolveUrlPromise(url);
+              }
+            } catch (err) {
+              console.error("❌ Error getting URL from network API:", err);
+              // We'll continue with other fallbacks
+            }
+          }, 5000);
+        }
+
+        // Fallback 2: Extract URL from server output
         setTimeout(() => {
-          clearInterval(checkInterval);
-          if (!reactUrl) {
-            const defaultUrl = "http://localhost:3000";
+          const allOutput = outputChunks.join("\n");
+          const urlMatch = allOutput.match(
+            /Local:\s+(https?:\/\/localhost:\d+)/
+          );
+
+          if (urlMatch && urlMatch[1]) {
+            const url = urlMatch[1].trim();
+            console.log("🔄 Extracted URL from server output:", url);
+
+            clearTimeout(timeoutId);
             outputContent.push({
               type: "text",
-              value: `⚠️ Using default URL: ${defaultUrl}`,
+              value: `🌐 Server ready at: ${url} (extracted from logs)`,
             });
-            resolve(defaultUrl);
+            resolveUrlPromise(url);
+          } else {
+            // Fallback 3: Default to standard localhost:3000
+            console.warn("⚠️ Using default URL fallback");
+            const defaultUrl = "http://localhost:3000";
+
+            outputContent.push({
+              type: "text",
+              value: `⚠️ Could not detect server URL, trying default: ${defaultUrl}`,
+            });
+            resolveUrlPromise(defaultUrl);
           }
         }, 10000);
-      });
+      }
 
-      outputContent.push({
-        type: "text",
-        value: "✅ React component is now running!",
-      });
+      // Set up a final timeout to avoid hanging forever
+      const hardTimeoutId = setTimeout(() => {
+        rejectUrlPromise(
+          new Error(
+            "Server startup timeout - server may be running but URL could not be determined"
+          )
+        );
+      }, 60000); // 1 minute max timeout
 
-      return { url: serverUrl, outputContent };
+      try {
+        // Wait for the URL promise to resolve
+        const serverUrl = await urlPromise;
+        clearTimeout(hardTimeoutId);
+
+        return { url: serverUrl, outputContent };
+      } catch (error: any) {
+        console.error("❌ Error waiting for server URL:", error);
+        clearTimeout(hardTimeoutId);
+
+        outputContent.push({
+          type: "text",
+          value: `🚫 Error waiting for server URL: ${error.message}`,
+        });
+        throw error;
+      }
     } catch (error: any) {
       console.error("Error starting dev server:", error);
       outputContent.push({
@@ -1132,6 +1205,71 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         </div>
       ) : null;
 
+    // Add this effect to handle the iframe src properly
+    useEffect(() => {
+      // When the reactUrl changes and we have an iframe reference
+      if (iframeRef.current && metadata?.reactUrl) {
+        // Very detailed logging to help debug issues with iframe URL
+        console.log(
+          "🔗 Setting iframe src to WebContainer URL:",
+          metadata.reactUrl
+        );
+        console.log("Iframe current src:", iframeRef.current.src || "none");
+
+        try {
+          // Important: Set the src directly as a property (not via attribute)
+          // This ensures it's treated as an absolute URL
+          iframeRef.current.src = metadata.reactUrl;
+
+          // After a brief delay, check if the iframe loaded correctly
+          setTimeout(() => {
+            if (iframeRef.current) {
+              console.log("Iframe src after setting:", iframeRef.current.src);
+
+              // Add a message to the console about iframe status
+              if (iframeRef.current.src === metadata.reactUrl) {
+                console.log("✅ Iframe URL set successfully");
+              } else {
+                console.warn("⚠️ Iframe URL may not have been set correctly");
+              }
+            }
+          }, 500);
+        } catch (err) {
+          console.error("Error setting iframe src:", err);
+        }
+      }
+    }, [metadata?.reactUrl]);
+
+    // Add this near your iframe to help debug connection issues
+    {
+      metadata?.reactUrl && (
+        <div className="text-xs bg-gray-100 p-2 mt-2 rounded">
+          <div className="font-bold">Debugging Connection:</div>
+          <div>URL: {metadata.reactUrl}</div>
+          <button
+            onClick={() => {
+              // Try to open the URL in a new tab to test direct access
+              window.open(metadata.reactUrl, "_blank");
+            }}
+            className="px-2 py-1 bg-blue-500 text-white rounded mt-1 text-xs"
+          >
+            Test URL in new tab
+          </button>
+          <button
+            onClick={() => {
+              // Force refresh the iframe
+              if (iframeRef.current) {
+                iframeRef.current.src = metadata.reactUrl + "?" + Date.now();
+              }
+            }}
+            className="px-2 py-1 bg-green-500 text-white rounded mt-1 text-xs ml-2"
+          >
+            Force refresh
+          </button>
+        </div>
+      );
+    }
+
     // Render the appropriate content based on the mode
     const renderContentByMode = () => {
       if (metadata?.mode === "react" && metadata?.reactUrl) {
@@ -1140,13 +1278,23 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             <div className="px-1 flex-1 min-h-[600px] border border-border rounded-md overflow-hidden">
               <iframe
                 ref={iframeRef}
-                src={metadata.reactUrl}
-                title="React Component"
+                title="React Component Preview"
                 className="w-full h-full border-none"
                 allow="clipboard-read; clipboard-write"
+                // Force iframe to refresh when URL changes by using key
+                key={`frame-${metadata.reactUrl}`}
+                // Expand sandbox permissions to allow more functionality
+                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-presentation"
               />
             </div>
-            <div className="flex justify-end mt-2">
+            <div className="flex justify-between mt-2">
+              <div className="text-xs text-gray-500">
+                {metadata.reactUrl && (
+                  <span>
+                    Connected to WebContainer server at: {metadata.reactUrl}
+                  </span>
+                )}
+              </div>
               <button
                 onClick={() =>
                   setMetadata((prev) => ({ ...prev, mode: "code" }))
@@ -1301,3 +1449,60 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     },
   ],
 });
+
+// For React components:
+async function setupReactEnvironment(webcontainer: any, code: string) {
+  // ... existing code ...
+
+  // Start the dev server and ensure we get the correct URL
+  const devServer = await webcontainer.spawn("npm", ["run", "dev"]);
+
+  // Get a proper reference to the WebContainer's dev server URL
+  const devServerUrl = await new Promise<string>((resolve) => {
+    devServer.output.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          const text = chunk.toString();
+          // Look for the Vite output that shows the URL
+          if (text.includes("Local:") && text.includes("http://localhost")) {
+            // Extract the URL from Vite's output
+            const match = text.match(/Local:\s+(http:\/\/localhost:\d+)/);
+            if (match && match[1]) {
+              resolve(match[1]);
+            }
+          }
+        },
+      })
+    );
+  });
+
+  // Return the actual URL to use in the iframe
+  return {
+    url: devServerUrl,
+    process: devServer,
+  };
+}
+
+// Then update the component that renders the preview iframe:
+const PreviewComponent = ({ url }: { url: string }) => {
+  // Use useEffect to properly handle the iframe URL
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (iframeRef.current && url) {
+      // Set the src directly to ensure it's treated as absolute URL
+      iframeRef.current.src = url;
+    }
+  }, [url]);
+
+  return (
+    <div className="preview-container">
+      <iframe
+        ref={iframeRef}
+        title="React Component Preview"
+        className="component-preview"
+        sandbox="allow-scripts allow-same-origin"
+      />
+    </div>
+  );
+};
