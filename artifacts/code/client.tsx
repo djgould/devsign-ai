@@ -817,11 +817,12 @@ export const codeArtifact = new Artifact<"code", Metadata>({
   description:
     "Useful for code generation; Code execution is available for JavaScript using WebContainers. React components can be rendered.",
   initialize: async ({ setMetadata }) => {
-    // Initialize with default metadata
-    setMetadata({
+    // Initialize with default metadata without running anything
+    setMetadata((currentMetadata) => ({
+      ...(currentMetadata || {}),
       outputs: [],
-      mode: "code",
-    });
+      mode: "react", // Default to React mode
+    }));
   },
   onStreamPart: ({ streamPart, setArtifact }) => {
     if (streamPart.type === "code-delta") {
@@ -847,10 +848,27 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     }
   },
   content: ({ metadata, setMetadata, ...props }) => {
+    // Log incoming props to see what content is provided
+    console.log("🧩 Code Artifact rendering with props:", {
+      contentLength: props.content?.length || 0,
+      contentPreview: props.content
+        ? props.content.substring(0, 50) + "..."
+        : "empty",
+      status: props.status,
+      isCurrentVersion: props.isCurrentVersion,
+      hasMetadata: !!metadata,
+    });
+
     // Default content for the editor
     const displayContent =
       props.content ||
-      '// Write your JavaScript code here\nconsole.log("Hello, world!");';
+      '// Enter your code here\n// Click "Run" to execute JavaScript\n// Click "Run as React" to render a React component';
+
+    console.log("🧩 Code Artifact using displayContent:", {
+      usingDefaultContent: !props.content,
+      displayContentLength: displayContent.length,
+      displayContentPreview: displayContent.substring(0, 50) + "...",
+    });
 
     // State to track active runner and execution
     const [runningCode, setRunningCode] = useState<{

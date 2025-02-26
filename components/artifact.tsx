@@ -265,15 +265,17 @@ function PureArtifact({
   useEffect(() => {
     // This only runs on the client, so it's safe to update state
     const timer = setTimeout(() => {
-      // Force artifact to be visible
-      setArtifact((current) => ({
-        ...current,
-        isVisible: true,
-      }));
+      // Only force visibility if we have a real artifact (not init)
+      if (artifact.documentId !== "init") {
+        setArtifact((current) => ({
+          ...current,
+          isVisible: true,
+        }));
+      }
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [setArtifact]);
+  }, [setArtifact, artifact.documentId]);
 
   useEffect(() => {
     if (artifact.documentId !== "init") {
@@ -284,7 +286,7 @@ function PureArtifact({
         });
       }
 
-      // Ensure content is visible
+      // Ensure content is visible when there's an actual artifact
       setArtifact((current) => ({
         ...current,
         isVisible: true,
