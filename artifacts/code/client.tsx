@@ -3,185 +3,14 @@ import { CodeEditor } from "@/components/code-editor";
 import {
   CopyIcon,
   MessageIcon,
-  PlayIcon,
   RedoIcon,
   UndoIcon,
   CodeIcon,
 } from "@/components/icons";
 import { toast } from "sonner";
 import { generateUUID } from "@/lib/utils";
-import {
-  Console,
-  ConsoleOutput,
-  ConsoleOutputContent,
-} from "@/components/console";
 import { useWebContainer } from "@/components/web-container-provider";
 import { useEffect, useState, useRef } from "react";
-
-// Execute JavaScript code using WebContainers
-async function executeJavaScript(
-  code: string,
-  webcontainer: any
-): Promise<{ outputContent: Array<ConsoleOutputContent>; error?: string }> {
-  const outputContent: Array<ConsoleOutputContent> = [];
-  let error: string | undefined = undefined;
-
-  try {
-    if (!webcontainer) {
-      throw new Error("WebContainer is not available");
-    }
-
-    // Clean the code - remove BOM and normalize line endings
-    const cleanedCode = code
-      .replace(/^\uFEFF/, "") // Remove BOM if present
-      .replace(/^\s+/, "") // Remove leading whitespace
-      .trim(); // Trim any extra whitespace
-
-    // Check if the code appears to be Python
-    if (isPythonCode(cleanedCode)) {
-      return {
-        outputContent: [
-          {
-            type: "text",
-            value:
-              "⚠️ Python code detected. This environment runs JavaScript with Node.js, not Python. Please use JavaScript code instead.",
-          },
-          {
-            type: "text",
-            value:
-              "Here's a simple JavaScript example to get you started:\n\nconsole.log('Hello, world!');\n\n// Define a function\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet('Developer'));",
-          },
-        ],
-        error: "Python code cannot be executed in JavaScript environment",
-      };
-    }
-
-    // Create a better error handler code wrapper
-    const errorHandlingCode = `
-try {
-${cleanedCode}
-} catch (error) {
-  console.error('Execution error: ' + error.message);
-  if (error.stack) {
-    console.error(error.stack.split('\\n').slice(0, 3).join('\\n'));
-  }
-}
-`.trim();
-
-    // Log the code being executed (helpful for debugging)
-    console.log("Executing code:", errorHandlingCode);
-
-    // Write the code to index.js
-    await webcontainer.fs.writeFile("index.js", errorHandlingCode);
-
-    // Start the process
-    const startProcess = await webcontainer.spawn("node", ["index.js"]);
-
-    // Collect stdout
-    let stdoutString = "";
-    let errorOutput = "";
-    startProcess.output.pipeTo(
-      new WritableStream({
-        write(chunk) {
-          const chunkStr = chunk.toString();
-          stdoutString += chunkStr;
-
-          // Check if this is error content
-          if (chunkStr.includes("Execution error:")) {
-            errorOutput += chunkStr;
-          }
-
-          // Add fancy formatting for errors to make them stand out
-          if (chunkStr.includes("Error:") || chunkStr.includes("error:")) {
-            outputContent.push({
-              type: "text",
-              value: `🚫 ${chunkStr}`,
-            });
-          } else {
-            outputContent.push({
-              type: "text",
-              value: chunkStr,
-            });
-          }
-        },
-      })
-    );
-
-    // Wait for process to exit and check status
-    const exitCode = await startProcess.exit;
-
-    if (exitCode !== 0) {
-      // Extract the actual error message from the output
-      const errorMatch = errorOutput.match(/Execution error: (.*?)(\n|$)/);
-      const errorMsg = errorMatch
-        ? errorMatch[1]
-        : `Process exited with code ${exitCode}`;
-
-      error = errorMsg;
-
-      // Only add this message if we don't already have error output
-      if (!errorOutput) {
-        outputContent.push({
-          type: "text",
-          value: `🚫 ${errorMsg}`,
-        });
-      }
-    }
-  } catch (err: any) {
-    const errorMsg = err.message || "Error executing JavaScript";
-    error = errorMsg;
-    outputContent.push({
-      type: "text",
-      value: `🚫 Error: ${errorMsg}`,
-    });
-  }
-
-  return { outputContent, error };
-}
-
-// Function to detect if the code is likely Python
-function isPythonCode(code: string): boolean {
-  // Look for common Python patterns
-  const pythonIndicators = [
-    /^#!/, // Shebang
-    /^# .*Python/i, // Python comment
-    /\bdef \w+\s*\(.*\):/, // Function definition
-    /\bimport\s+(\w+(\s*,\s*\w+)*)/, // import statement
-    /\bfrom\s+\w+(\.\w+)*\s+import\s+/, // from...import
-    /\bif\s+__name__\s*==\s*('|")__main__\1\s*:/, // if __name__ == "__main__"
-    /\bindent|except:|finally:/, // Python specific keywords
-    /\bclass\s+\w+(\s*\(\s*\w+\s*\))?:/, // class definition
-    /\bprint\s*\(/, // print function
-    /^\s*>>>/, // Python REPL
-  ];
-
-  // Check for language indicator comments
-  if (
-    code.trim().startsWith("# Python") ||
-    code.includes("# -*- coding: utf-8 -*-") ||
-    code.match(/^# Simple .* in Python/)
-  ) {
-    return true;
-  }
-
-  // Check for Python indicators
-  for (const pattern of pythonIndicators) {
-    if (pattern.test(code)) {
-      return true;
-    }
-  }
-
-  // Check for statistical indicators (if there are lots of Python-specific syntax)
-  let pythonSyntaxCount = 0;
-  if (code.includes("def ")) pythonSyntaxCount++;
-  if (code.includes("import ")) pythonSyntaxCount++;
-  if (code.includes("print(")) pythonSyntaxCount++;
-  if (code.includes(":")) pythonSyntaxCount++;
-  if (code.includes("__")) pythonSyntaxCount++;
-
-  // If we have multiple Python indicators in the same file, it's likely Python
-  return pythonSyntaxCount >= 3;
-}
 
 // Function to detect if the code is a React component
 function isReactComponentCode(code: string): boolean {
@@ -413,7 +242,7 @@ export default App;
     file: {
       contents: `
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   darkMode: ["class"],
   content: [
     './pages/**/*.{js,jsx}',
@@ -494,7 +323,7 @@ module.exports = {
   "postcss.config.js": {
     file: {
       contents: `
-module.exports = {
+export default {
   plugins: {
     tailwindcss: {},
     autoprefixer: {},
@@ -741,12 +570,32 @@ export default App;
             const output = chunk.toString();
             outputChunks.push(output);
 
-            // Add significant logs to the console
-            if (
-              output.includes("Local:") ||
-              output.includes("ready in") ||
-              output.includes("started")
-            ) {
+            // Format the output to make it more readable
+            // Filter out Go stack traces and complex esbuild errors
+            if (isGoStackTrace(output)) {
+              // For Go stack traces (from esbuild), provide a simplified error message
+              outputContent.push({
+                type: "text",
+                value:
+                  "⚠️ Build error from esbuild (internal error simplified):",
+              });
+
+              // Try to extract a more readable error message
+              const errorMessage = extractErrorMessage(output);
+              if (errorMessage) {
+                outputContent.push({
+                  type: "text",
+                  value: `Error: ${errorMessage}`,
+                });
+              } else {
+                outputContent.push({
+                  type: "text",
+                  value:
+                    "A build error occurred. Please check your code for syntax errors.",
+                });
+              }
+            } else {
+              // For normal output, display it directly
               outputContent.push({
                 type: "text",
                 value: output,
@@ -879,22 +728,74 @@ export default App;
   }
 }
 
+// Helper function to detect Go stack traces
+function isGoStackTrace(output: string): boolean {
+  return (
+    output.includes("goroutine") &&
+    (output.includes("github.com/evanw/esbuild") ||
+      output.includes("runtime.gopark") ||
+      output.includes("runtime/proc.go"))
+  );
+}
+
+// Function to extract a meaningful error message from a stack trace
+function extractErrorMessage(stackTrace: string): string | null {
+  // Try to find error messages in the stack trace
+  const errorMatches = stackTrace.match(/Error: (.*?)($|\n)/);
+  if (errorMatches && errorMatches[1]) {
+    return errorMatches[1].trim();
+  }
+
+  // Try to find the first meaningful line that might indicate the error
+  const lines = stackTrace.split("\n");
+  for (const line of lines) {
+    // Skip lines that are just stack frame information
+    if (
+      line.includes("at ") ||
+      line.includes("goroutine") ||
+      line.match(/^\s*$/)
+    ) {
+      continue;
+    }
+
+    // If we find a meaningful line, return it
+    if (line.trim()) {
+      return line.trim();
+    }
+  }
+
+  return null;
+}
+
+// Define simplified types to remove JavaScript execution specific types
+interface ConsoleOutputContent {
+  type: string;
+  value: string;
+}
+
+interface ConsoleOutput {
+  id: string;
+  contents: Array<ConsoleOutputContent>;
+  status: "in_progress" | "completed" | "failed";
+}
+
 interface Metadata {
   outputs: Array<ConsoleOutput>;
   reactUrl?: string;
+  previousReactUrl?: string;
   mode?: "code" | "react";
 }
 
 export const codeArtifact = new Artifact<"code", Metadata>({
   kind: "code",
   description:
-    "Useful for code generation; Code execution is available for JavaScript using WebContainers. React components can be rendered.",
+    "Useful for code generation; React components can be rendered in real-time.",
   initialize: async ({ setMetadata }) => {
-    // Initialize with default metadata without running anything
+    // Initialize with default metadata
     setMetadata((currentMetadata) => ({
       ...(currentMetadata || {}),
       outputs: [],
-      mode: "react", // Default to React mode
+      mode: "code", // Default to code mode
     }));
   },
   onStreamPart: ({ streamPart, setArtifact }) => {
@@ -903,7 +804,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
 
       // Use a proper initialization if the content is empty or undefined
       const defaultContent =
-        '// Write your JavaScript code here\nconsole.log("Hello, world!");';
+        '// Write your React component code here\n// Click "Preview" to render';
       const content = streamContent.trim() ? streamContent : defaultContent;
 
       setArtifact((draftArtifact) => {
@@ -921,33 +822,15 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     }
   },
   content: ({ metadata, setMetadata, ...props }) => {
-    // Log incoming props to see what content is provided
-    console.log("🧩 Code Artifact rendering with props:", {
-      contentLength: props.content?.length || 0,
-      contentPreview: props.content
-        ? props.content.substring(0, 50) + "..."
-        : "empty",
-      status: props.status,
-      isCurrentVersion: props.isCurrentVersion,
-      hasMetadata: !!metadata,
-    });
-
     // Default content for the editor
     const displayContent =
       props.content ||
-      '// Enter your code here\n// Click "Run" to execute JavaScript\n// Click "Run as React" to render a React component';
-
-    console.log("🧩 Code Artifact using displayContent:", {
-      usingDefaultContent: !props.content,
-      displayContentLength: displayContent.length,
-      displayContentPreview: displayContent.substring(0, 50) + "...",
-    });
+      '// Enter your React component code here\n// Click "Preview" to render';
 
     // State to track active runner and execution
     const [runningCode, setRunningCode] = useState<{
       content: string;
       runId: string;
-      mode: "code" | "react";
     } | null>(null);
 
     const {
@@ -961,8 +844,8 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     // Listen for code execution events
     useEffect(() => {
       const handleExecuteCode = (event: CustomEvent) => {
-        const { runId, content, mode = "code" } = event.detail;
-        setRunningCode({ runId, content, mode });
+        const { runId, content } = event.detail;
+        setRunningCode({ runId, content });
       };
 
       window.addEventListener(
@@ -977,7 +860,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       };
     }, []);
 
-    // Execute code when running state changes
+    // Execute React code when running state changes
     useEffect(() => {
       async function executeCode() {
         if (!runningCode) return;
@@ -1011,111 +894,65 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             return;
           }
 
-          // Check if we should render as React or execute as JavaScript
-          if (
-            runningCode.mode === "react" ||
-            isReactComponentCode(runningCode.content)
-          ) {
-            // Execute using React renderer
+          // Execute using React renderer
+          setMetadata((metadata) => ({
+            ...metadata,
+            mode: "react",
+            outputs: [
+              ...metadata.outputs.filter(
+                (output) => output.id !== runningCode.runId
+              ),
+              {
+                id: runningCode.runId,
+                contents: [
+                  {
+                    type: "text",
+                    value: "Starting React component rendering...",
+                  },
+                ],
+                status: "in_progress",
+              },
+            ],
+          }));
+
+          const result = await executeReactComponent(
+            runningCode.content,
+            webcontainer
+          );
+
+          if (result.error) {
             setMetadata((metadata) => ({
               ...metadata,
-              mode: "react",
               outputs: [
                 ...metadata.outputs.filter(
                   (output) => output.id !== runningCode.runId
                 ),
                 {
                   id: runningCode.runId,
-                  contents: [
-                    {
-                      type: "text",
-                      value: "Starting React component rendering...",
-                    },
-                  ],
-                  status: "in_progress",
+                  contents: result.outputContent,
+                  status: "failed",
+                },
+              ],
+            }));
+          } else {
+            setMetadata((metadata) => ({
+              ...metadata,
+              reactUrl: result.url,
+              outputs: [
+                ...metadata.outputs.filter(
+                  (output) => output.id !== runningCode.runId
+                ),
+                {
+                  id: runningCode.runId,
+                  contents: result.outputContent,
+                  status: "completed",
                 },
               ],
             }));
 
-            const result = await executeReactComponent(
-              runningCode.content,
-              webcontainer
-            );
-
-            if (result.error) {
-              setMetadata((metadata) => ({
-                ...metadata,
-                outputs: [
-                  ...metadata.outputs.filter(
-                    (output) => output.id !== runningCode.runId
-                  ),
-                  {
-                    id: runningCode.runId,
-                    contents: result.outputContent,
-                    status: "failed",
-                  },
-                ],
-              }));
-            } else {
-              setMetadata((metadata) => ({
-                ...metadata,
-                reactUrl: result.url,
-                outputs: [
-                  ...metadata.outputs.filter(
-                    (output) => output.id !== runningCode.runId
-                  ),
-                  {
-                    id: runningCode.runId,
-                    contents: result.outputContent,
-                    status: "completed",
-                  },
-                ],
-              }));
-
-              // Set iframe src if available
-              if (iframeRef.current && result.url) {
-                iframeRef.current.src = result.url;
-              }
-            }
-          } else {
-            // Execute using WebContainer
-            const result = await executeJavaScript(
-              runningCode.content,
-              webcontainer
-            );
-
-            if (result.error) {
-              setMetadata((metadata) => ({
-                ...metadata,
-                mode: "code",
-                outputs: [
-                  ...metadata.outputs.filter(
-                    (output) => output.id !== runningCode.runId
-                  ),
-                  {
-                    id: runningCode.runId,
-                    contents: [
-                      { type: "text", value: result.error || "Unknown error" },
-                    ],
-                    status: "failed",
-                  },
-                ],
-              }));
-            } else {
-              setMetadata((metadata) => ({
-                ...metadata,
-                mode: "code",
-                outputs: [
-                  ...metadata.outputs.filter(
-                    (output) => output.id !== runningCode.runId
-                  ),
-                  {
-                    id: runningCode.runId,
-                    contents: result.outputContent,
-                    status: "completed",
-                  },
-                ],
-              }));
+            // Set iframe src if available
+            if (iframeRef.current && result.url) {
+              iframeRef.current.src = result.url;
             }
           }
 
@@ -1146,42 +983,16 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     const WebContainerStatus = () => {
       if (isLoading) {
         return (
-          <div className="p-3 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-md mb-3 text-sm">
-            <div className="font-medium">WebContainers is initializing...</div>
-            <div className="text-xs mt-1">
-              Please wait while we prepare the JavaScript execution environment.
-            </div>
+          <div className="p-2 bg-blue-50 border border-blue-100 rounded-md mb-3 text-sm text-center">
+            Initializing runtime environment...
           </div>
         );
       }
 
       if (containerError) {
         return (
-          <div className="p-3 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-md mb-3 text-sm">
-            <div className="font-medium">
-              WebContainers could not be initialized
-            </div>
-            <div className="text-xs mt-1">{containerError}</div>
-            <div className="text-xs mt-2">
-              <strong>Note:</strong> WebContainers requires a secure context and
-              specific HTTP headers. The code will still be displayed but cannot
-              be executed.
-            </div>
-          </div>
-        );
-      }
-
-      if (webcontainer) {
-        return (
-          <div className="p-2 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-md mb-3 text-xs">
-            <div>
-              🟢 <strong>JavaScript Runtime Ready</strong> - You can now execute
-              JavaScript/Node.js code
-            </div>
-            <div className="mt-1">
-              💻 <strong>React Rendering Available</strong> - You can run React
-              components with the "Run as React" button
-            </div>
+          <div className="p-2 bg-red-50 border border-red-100 rounded-md mb-3 text-sm text-center">
+            Runtime environment unavailable
           </div>
         );
       }
@@ -1189,189 +1000,136 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       return null;
     };
 
-    // Add debugging in development
-    const debugInfo =
-      process.env.NODE_ENV === "development" ? (
-        <div className="text-xs text-gray-500 mb-2 p-1 bg-gray-100 dark:bg-gray-800">
-          Content length: {props.content?.length || 0}
-          {!props.content && " (using default)"}
-          <br />
-          WebContainer: {webcontainer ? "Available" : "Not available"}
-          {isLoading && " (Loading...)"}
-          {containerError && ` (Error: ${containerError})`}
-          <br />
-          Mode: {metadata?.mode || "code"}
-          {metadata?.reactUrl && ` | React URL: ${metadata.reactUrl}`}
-        </div>
-      ) : null;
-
     // Add this effect to handle the iframe src properly
     useEffect(() => {
       // When the reactUrl changes and we have an iframe reference
       if (iframeRef.current && metadata?.reactUrl) {
-        // Very detailed logging to help debug issues with iframe URL
-        console.log(
-          "🔗 Setting iframe src to WebContainer URL:",
-          metadata.reactUrl
-        );
-        console.log("Iframe current src:", iframeRef.current.src || "none");
-
         try {
-          // Important: Set the src directly as a property (not via attribute)
-          // This ensures it's treated as an absolute URL
-          iframeRef.current.src = metadata.reactUrl;
+          // Set the src directly as a property
+          // Only set it if it's different from current src to avoid unnecessary reloads
+          if (iframeRef.current.src !== metadata.reactUrl) {
+            iframeRef.current.src = metadata.reactUrl;
 
-          // After a brief delay, check if the iframe loaded correctly
-          setTimeout(() => {
-            if (iframeRef.current) {
-              console.log("Iframe src after setting:", iframeRef.current.src);
-
-              // Add a message to the console about iframe status
-              if (iframeRef.current.src === metadata.reactUrl) {
-                console.log("✅ Iframe URL set successfully");
-              } else {
-                console.warn("⚠️ Iframe URL may not have been set correctly");
-              }
+            // Only auto-switch to React mode when initially getting a reactUrl
+            // This prevents overriding user's manual tab selection
+            if (!metadata.previousReactUrl && metadata.mode !== "react") {
+              console.log(
+                "Initial React URL detected, switching to React mode"
+              );
+              setMetadata((prev) => ({
+                ...prev,
+                mode: "react",
+                previousReactUrl: metadata.reactUrl, // Track that we've seen this URL
+              }));
+            } else {
+              // Just update the previousReactUrl without changing mode
+              setMetadata((prev) => ({
+                ...prev,
+                previousReactUrl: metadata.reactUrl,
+              }));
             }
-          }, 500);
+          }
         } catch (err) {
           console.error("Error setting iframe src:", err);
         }
       }
-    }, [metadata?.reactUrl]);
-
-    // Add this near your iframe to help debug connection issues
-    {
-      metadata?.reactUrl && (
-        <div className="text-xs bg-gray-100 p-2 mt-2 rounded">
-          <div className="font-bold">Debugging Connection:</div>
-          <div>URL: {metadata.reactUrl}</div>
-          <button
-            onClick={() => {
-              // Try to open the URL in a new tab to test direct access
-              window.open(metadata.reactUrl, "_blank");
-            }}
-            className="px-2 py-1 bg-blue-500 text-white rounded mt-1 text-xs"
-          >
-            Test URL in new tab
-          </button>
-          <button
-            onClick={() => {
-              // Force refresh the iframe
-              if (iframeRef.current) {
-                iframeRef.current.src = metadata.reactUrl + "?" + Date.now();
-              }
-            }}
-            className="px-2 py-1 bg-green-500 text-white rounded mt-1 text-xs ml-2"
-          >
-            Force refresh
-          </button>
-        </div>
-      );
-    }
+    }, [metadata?.reactUrl, setMetadata]);
 
     // Render the appropriate content based on the mode
     const renderContentByMode = () => {
-      if (metadata?.mode === "react" && metadata?.reactUrl) {
-        return (
-          <div className="flex flex-col h-full">
-            <div className="px-1 flex-1 min-h-[600px] border border-border rounded-md overflow-hidden">
+      // Determine current mode - default to code mode if no mode is set
+      const currentMode = metadata?.mode || "code";
+
+      return (
+        <div className="flex-1 relative h-full">
+          {/* Editor */}
+          <div
+            className={`absolute inset-0 w-full h-full ${
+              currentMode !== "react" ? "z-10" : "z-0"
+            }`}
+            style={{
+              visibility: currentMode !== "react" ? "visible" : "hidden",
+              pointerEvents: currentMode !== "react" ? "auto" : "none",
+            }}
+          >
+            <CodeEditor {...props} content={displayContent} />
+          </div>
+
+          {/* Preview */}
+          <div
+            className={`absolute inset-0 w-full h-full ${
+              currentMode === "react" ? "z-10" : "z-0"
+            }`}
+            style={{
+              visibility: currentMode === "react" ? "visible" : "hidden",
+              pointerEvents: currentMode === "react" ? "auto" : "none",
+            }}
+          >
+            <div className="h-full w-full border border-border rounded-md overflow-hidden">
               <iframe
                 ref={iframeRef}
                 title="React Component Preview"
                 className="w-full h-full border-none"
                 allow="clipboard-read; clipboard-write"
-                // Force iframe to refresh when URL changes by using key
-                key={`frame-${metadata.reactUrl}`}
-                // Expand sandbox permissions to allow more functionality
+                key={`frame-${metadata?.reactUrl || "placeholder"}`}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-presentation"
               />
             </div>
-            <div className="flex justify-between mt-2">
-              <div className="text-xs text-gray-500">
-                {metadata.reactUrl && (
-                  <span>
-                    Connected to WebContainer server at: {metadata.reactUrl}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() =>
-                  setMetadata((prev) => ({ ...prev, mode: "code" }))
-                }
-                className="px-3 py-1.5 text-xs border rounded-md bg-secondary hover:bg-secondary/80"
-              >
-                Back to Editor
-              </button>
-            </div>
           </div>
-        );
-      }
-
-      return (
-        <div className="px-1 flex-1">
-          <CodeEditor {...props} content={displayContent} />
         </div>
       );
     };
 
+    const switchToCodeMode = () => {
+      console.log("Switching to code mode");
+      setMetadata((prev) => ({ ...prev, mode: "code" }));
+    };
+
+    const switchToReactMode = () => {
+      console.log("Switching to React mode");
+      setMetadata((prev) => ({ ...prev, mode: "react" }));
+    };
+
     return (
       <div className="w-full h-full flex flex-col">
-        {debugInfo}
-
         {/* Show WebContainer status information */}
         <WebContainerStatus />
 
-        {renderContentByMode()}
+        {/* Tab navigation */}
+        <div className="flex border-b mb-3">
+          <button
+            onClick={switchToCodeMode}
+            className={`px-4 py-2 text-sm font-medium ${
+              (metadata?.mode || "code") !== "react"
+                ? "border-b-2 border-blue-500 text-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Editor
+          </button>
 
-        {metadata?.outputs && (
-          <Console
-            consoleOutputs={metadata.outputs}
-            setConsoleOutputs={() => {
-              setMetadata({
-                ...metadata,
-                outputs: [],
-              });
-            }}
-          />
-        )}
+          <button
+            onClick={switchToReactMode}
+            className={`px-4 py-2 text-sm font-medium ${
+              (metadata?.mode || "code") === "react"
+                ? "border-b-2 border-blue-500 text-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            disabled={!metadata?.reactUrl}
+          >
+            Preview
+          </button>
+        </div>
+
+        {renderContentByMode()}
       </div>
     );
   },
   actions: [
     {
-      icon: <PlayIcon size={18} />,
-      label: "Run",
-      description: "Execute JavaScript code using WebContainers",
-      onClick: ({ content, setMetadata }) => {
-        const runId = generateUUID();
-
-        // Set status for the new run
-        setMetadata((metadata) => ({
-          ...metadata,
-          outputs: [
-            ...metadata.outputs,
-            {
-              id: runId,
-              contents: [],
-              status: "in_progress",
-            },
-          ],
-        }));
-
-        // Dispatch custom event to trigger code execution
-        if (typeof window !== "undefined") {
-          const event = new CustomEvent("execute-code", {
-            detail: { runId, content, mode: "code" },
-          });
-          window.dispatchEvent(event);
-        }
-      },
-    },
-    {
       icon: <CodeIcon size={18} />,
-      label: "Run as React",
-      description: "Render as a React component in WebContainers",
+      label: "Preview",
+      description: "Render as a React component",
       onClick: ({ content, setMetadata }) => {
         const runId = generateUUID();
 
@@ -1393,7 +1151,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         // Dispatch custom event to trigger React rendering
         if (typeof window !== "undefined") {
           const event = new CustomEvent("execute-code", {
-            detail: { runId, content, mode: "react" },
+            detail: { runId, content },
           });
           window.dispatchEvent(event);
         }
@@ -1449,60 +1207,3 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     },
   ],
 });
-
-// For React components:
-async function setupReactEnvironment(webcontainer: any, code: string) {
-  // ... existing code ...
-
-  // Start the dev server and ensure we get the correct URL
-  const devServer = await webcontainer.spawn("npm", ["run", "dev"]);
-
-  // Get a proper reference to the WebContainer's dev server URL
-  const devServerUrl = await new Promise<string>((resolve) => {
-    devServer.output.pipeTo(
-      new WritableStream({
-        write(chunk) {
-          const text = chunk.toString();
-          // Look for the Vite output that shows the URL
-          if (text.includes("Local:") && text.includes("http://localhost")) {
-            // Extract the URL from Vite's output
-            const match = text.match(/Local:\s+(http:\/\/localhost:\d+)/);
-            if (match && match[1]) {
-              resolve(match[1]);
-            }
-          }
-        },
-      })
-    );
-  });
-
-  // Return the actual URL to use in the iframe
-  return {
-    url: devServerUrl,
-    process: devServer,
-  };
-}
-
-// Then update the component that renders the preview iframe:
-const PreviewComponent = ({ url }: { url: string }) => {
-  // Use useEffect to properly handle the iframe URL
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    if (iframeRef.current && url) {
-      // Set the src directly to ensure it's treated as absolute URL
-      iframeRef.current.src = url;
-    }
-  }, [url]);
-
-  return (
-    <div className="preview-container">
-      <iframe
-        ref={iframeRef}
-        title="React Component Preview"
-        className="component-preview"
-        sandbox="allow-scripts allow-same-origin"
-      />
-    </div>
-  );
-};

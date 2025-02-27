@@ -133,18 +133,8 @@ function PureCodeEditor({ content, onSaveContent, status }: EditorProps) {
     }
   }, [content, status, isEditorReady, displayContent]);
 
-  // Debugging output for development
-  const debugInfo =
-    process.env.NODE_ENV === "development" ? (
-      <div className="text-xs text-muted-foreground p-1 bg-muted mb-1">
-        Editor ready: {isEditorReady ? "Yes" : "No"}, Has content:{" "}
-        {content ? "Yes" : "No"}, Length: {content?.length || 0}
-      </div>
-    ) : null;
-
   return (
     <div className="flex flex-col w-full h-full">
-      {debugInfo}
       <div
         className="h-full min-h-[400px] w-full border border-border rounded-md overflow-hidden"
         ref={containerRef}

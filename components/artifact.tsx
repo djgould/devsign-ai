@@ -491,17 +491,7 @@ function PureArtifact({
             </div>
 
             <div className="dark:bg-muted bg-background flex-1 overflow-y-auto !max-w-full p-4">
-              {/* Debug output to check content */}
-              {process.env.NODE_ENV === "development" && (
-                <div className="mb-2 p-2 bg-yellow-100 dark:bg-yellow-900 text-xs">
-                  <div>Content length: {artifact.content?.length || 0}</div>
-                  <div>Kind: {artifact.kind}</div>
-                  <div>Status: {artifact.status}</div>
-                  <div>Is visible: {artifact.isVisible ? "true" : "false"}</div>
-                </div>
-              )}
-
-              <div className="min-h-[500px] flex flex-col">
+              <div className="min-h-[500px] h-full flex flex-col">
                 <artifactDefinition.content
                   title={artifact.title}
                   content={

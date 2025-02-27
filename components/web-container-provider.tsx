@@ -74,29 +74,6 @@ export function WebContainerProvider({
         const instance = await WebContainer.boot();
         console.log("WebContainer booted successfully");
 
-        // Create initial filesystem
-        console.log("Initializing filesystem...");
-        await instance.mount({
-          "index.js": {
-            file: {
-              contents: "// This file will be replaced with user code",
-            },
-          },
-          "package.json": {
-            file: {
-              contents: JSON.stringify({
-                name: "web-container-code",
-                type: "module",
-                dependencies: {},
-                scripts: {
-                  start: "node index.js",
-                },
-              }),
-            },
-          },
-        });
-        console.log("Filesystem initialized");
-
         if (isMounted) {
           setWebcontainer(instance);
           setIsLoading(false);
