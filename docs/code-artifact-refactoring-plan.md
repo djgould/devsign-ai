@@ -59,16 +59,16 @@ artifacts/
 
 ### 2. Extract Utility Functions
 
-1. Move the following functions to `utils/codeDetection.ts`:
-
-   - `isReactComponentCode` (already simplified to only detect React components)
+1. Remove `isReactComponentCode` function as it's no longer needed after JavaScript execution functionality was removed.
 
 2. Move React template files to `utils/templateFiles.ts`:
 
-   - Extract `reactTemplateFiles` object
+   - Extract `reactTemplateFiles` object which is actively used for setting up the React environment in the WebContainer
 
 3. Create `utils/errorHandling.ts` for error parsing utilities:
-   - Move `isGoStackTrace` and `extractErrorMessage` functions
+   - Move `isGoStackTrace` and `extractErrorMessage` functions which are currently used for parsing and formatting error messages from esbuild and React execution
+
+Note: The directory structure (`utils/`, `components/`, `hooks/`) already exists but is currently empty, so we'll be populating these directories with the appropriate files.
 
 ### 3. Create Custom Hooks
 
@@ -83,6 +83,7 @@ artifacts/
    - Manage React preview rendering state
 
 3. Create `hooks/useEditorState.ts`:
+
    - Centralize tab state management
    - Handle mode switching logic
    - Track React URL state consistently

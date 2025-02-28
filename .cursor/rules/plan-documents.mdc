@@ -1,0 +1,7 @@
+---
+description: For using plan documents
+globs: 
+alwaysApply: false
+---
+# Plan Documents
+- when asked to follow a plan defined in a document, do not edit the document unless specifically asked
