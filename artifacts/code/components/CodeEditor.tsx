@@ -104,13 +104,16 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         pointerEvents: isVisible ? "auto" : "none",
       }}
     >
-      <div ref={containerRef} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        className="h-full w-full shadow-inner rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 transition-all duration-300"
+      />
 
       <div className="absolute bottom-4 right-4">
         <button
-          className={`px-4 py-2 text-white rounded-md ${
+          className={`px-4 py-2 text-white rounded-md shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl flex items-center gap-2 ${
             isWebContainerReady
-              ? "bg-blue-600 hover:bg-blue-700"
+              ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
               : "bg-gray-400 cursor-not-allowed"
           }`}
           onClick={onExecute}
@@ -121,6 +124,14 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
               : "Waiting for runtime environment to initialize..."
           }
         >
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M5 3L19 12L5 21V3Z" fill="currentColor" />
+          </svg>
           Preview
         </button>
       </div>
