@@ -29,7 +29,7 @@ interface Metadata {
   outputs: Array<ConsoleOutput>;
   reactUrl?: string;
   previousReactUrl?: string;
-  mode?: "code" | "react";
+  mode?: "editor" | "preview";
 }
 
 export const codeArtifact = new Artifact<"code", Metadata>({
@@ -41,7 +41,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     setMetadata((currentMetadata) => ({
       ...(currentMetadata || {}),
       outputs: [],
-      mode: "code", // Default to code mode
+      mode: "preview", // Default to preview mode for better UX
     }));
   },
   onStreamPart: ({ streamPart, setArtifact }) => {
@@ -87,6 +87,35 @@ export const codeArtifact = new Artifact<"code", Metadata>({
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    // Auto-execute on initial load if we have content and no reactUrl yet
+    useEffect(() => {
+      // Only auto-execute if:
+      // 1. WebContainer is ready
+      // 2. We have content to run
+      // 3. No preview URL exists yet
+      // 4. We're not already running code
+      if (
+        webcontainer &&
+        !isLoading &&
+        !containerError &&
+        props.content &&
+        metadata &&
+        !metadata.reactUrl &&
+        !runningCode
+      ) {
+        const autoRunId = generateUUID();
+        setRunningCode({ runId: autoRunId, content: props.content });
+      }
+    }, [
+      webcontainer,
+      isLoading,
+      containerError,
+      props.content,
+      metadata,
+      metadata?.reactUrl,
+      runningCode,
+    ]);
+
     // Listen for code execution events
     useEffect(() => {
       const handleExecuteCode = (event: CustomEvent) => {
@@ -110,6 +139,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     useEffect(() => {
       async function executeCode() {
         if (!runningCode) return;
+        if (!metadata) return; // Return early if metadata is null
 
         try {
           if (isLoading) {
@@ -118,8 +148,39 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           }
 
           if (containerError || !webcontainer) {
-            setMetadata((metadata) => ({
+            setMetadata((metadata) => {
+              if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
+
+              return {
+                ...metadata,
+                outputs: [
+                  ...metadata.outputs.filter(
+                    (output) => output.id !== runningCode.runId
+                  ),
+                  {
+                    id: runningCode.runId,
+                    contents: [
+                      {
+                        type: "text",
+                        value: containerError || "WebContainer not available",
+                      },
+                    ],
+                    status: "failed",
+                  },
+                ],
+              };
+            });
+            setRunningCode(null);
+            return;
+          }
+
+          // Execute using React renderer
+          setMetadata((metadata) => {
+            if (!metadata) return { outputs: [], mode: "preview" }; // Initialize metadata if null
+
+            return {
               ...metadata,
+              mode: "preview",
               outputs: [
                 ...metadata.outputs.filter(
                   (output) => output.id !== runningCode.runId
@@ -129,37 +190,14 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                   contents: [
                     {
                       type: "text",
-                      value: containerError || "WebContainer not available",
+                      value: "Starting React component rendering...",
                     },
                   ],
-                  status: "failed",
+                  status: "in_progress",
                 },
               ],
-            }));
-            setRunningCode(null);
-            return;
-          }
-
-          // Execute using React renderer
-          setMetadata((metadata) => ({
-            ...metadata,
-            mode: "react",
-            outputs: [
-              ...metadata.outputs.filter(
-                (output) => output.id !== runningCode.runId
-              ),
-              {
-                id: runningCode.runId,
-                contents: [
-                  {
-                    type: "text",
-                    value: "Starting React component rendering...",
-                  },
-                ],
-                status: "in_progress",
-              },
-            ],
-          }));
+            };
+          });
 
           const result = await executeReactComponent(
             runningCode.content,
@@ -167,34 +205,53 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           );
 
           if (result.error) {
-            setMetadata((metadata) => ({
-              ...metadata,
-              outputs: [
-                ...metadata.outputs.filter(
-                  (output) => output.id !== runningCode.runId
-                ),
-                {
-                  id: runningCode.runId,
-                  contents: result.outputContent,
-                  status: "failed",
-                },
-              ],
-            }));
+            setMetadata((metadata) => {
+              if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
+
+              return {
+                ...metadata,
+                outputs: [
+                  ...metadata.outputs.filter(
+                    (output) => output.id !== runningCode.runId
+                  ),
+                  {
+                    id: runningCode.runId,
+                    contents: result.outputContent,
+                    status: "failed",
+                  },
+                ],
+              };
+            });
           } else {
-            setMetadata((metadata) => ({
-              ...metadata,
-              reactUrl: result.url,
-              outputs: [
-                ...metadata.outputs.filter(
-                  (output) => output.id !== runningCode.runId
-                ),
-                {
-                  id: runningCode.runId,
-                  contents: result.outputContent,
-                  status: "completed",
-                },
-              ],
-            }));
+            setMetadata((metadata) => {
+              if (!metadata)
+                return {
+                  outputs: [
+                    {
+                      id: runningCode.runId,
+                      contents: result.outputContent,
+                      status: "completed",
+                    },
+                  ],
+                  mode: "preview",
+                  reactUrl: result.url,
+                }; // Initialize metadata if null
+
+              return {
+                ...metadata,
+                reactUrl: result.url,
+                outputs: [
+                  ...metadata.outputs.filter(
+                    (output) => output.id !== runningCode.runId
+                  ),
+                  {
+                    id: runningCode.runId,
+                    contents: result.outputContent,
+                    status: "completed",
+                  },
+                ],
+              };
+            });
 
             // Set iframe src if available
             if (iframeRef.current && result.url) {
@@ -205,19 +262,23 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           // Clear running state
           setRunningCode(null);
         } catch (error: any) {
-          setMetadata((metadata) => ({
-            ...metadata,
-            outputs: [
-              ...metadata.outputs.filter(
-                (output) => output.id !== runningCode.runId
-              ),
-              {
-                id: runningCode.runId,
-                contents: [{ type: "text", value: error.message }],
-                status: "failed",
-              },
-            ],
-          }));
+          setMetadata((metadata) => {
+            if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
+
+            return {
+              ...metadata,
+              outputs: [
+                ...metadata.outputs.filter(
+                  (output) => output.id !== runningCode.runId
+                ),
+                {
+                  id: runningCode.runId,
+                  contents: [{ type: "text", value: error.message }],
+                  status: "failed",
+                },
+              ],
+            };
+          });
           setRunningCode(null);
         }
       }
@@ -294,22 +355,24 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     // Add this effect to handle the iframe src properly
     useEffect(() => {
       // When the reactUrl changes and we have an iframe reference
-      if (iframeRef.current && metadata?.reactUrl) {
+      if (!metadata) return; // Don't do anything if metadata is null
+
+      if (iframeRef.current && metadata.reactUrl) {
         try {
           // Set the src directly as a property
           // Only set it if it's different from current src to avoid unnecessary reloads
           if (iframeRef.current.src !== metadata.reactUrl) {
             iframeRef.current.src = metadata.reactUrl;
 
-            // Only auto-switch to React mode when initially getting a reactUrl
+            // Only auto-switch to preview mode when initially getting a reactUrl
             // This prevents overriding user's manual tab selection
-            if (!metadata.previousReactUrl && metadata.mode !== "react") {
+            if (!metadata.previousReactUrl && metadata.mode !== "preview") {
               console.log(
-                "Initial React URL detected, switching to React mode"
+                "Initial React URL detected, switching to preview mode"
               );
               setMetadata((prev) => ({
                 ...prev,
-                mode: "react",
+                mode: "preview",
                 previousReactUrl: metadata.reactUrl, // Track that we've seen this URL
               }));
             } else {
@@ -324,23 +387,35 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           console.error("Error setting iframe src:", err);
         }
       }
-    }, [metadata?.reactUrl, setMetadata]);
+    }, [metadata, metadata?.reactUrl, setMetadata]);
 
     // Render the appropriate content based on the mode
     const renderContentByMode = () => {
-      // Determine current mode - default to code mode if no mode is set
-      const currentMode = metadata?.mode || "code";
+      // Safely handle cases where metadata might be null
+      if (!metadata) {
+        // Return a default view when metadata is null
+        return (
+          <div className="flex-1 relative h-full">
+            <div className="absolute inset-0 w-full h-full z-10">
+              <CodeEditor {...props} content={displayContent} />
+            </div>
+          </div>
+        );
+      }
+
+      // Determine current mode - default to editor mode if no mode is set
+      const currentMode = metadata?.mode || "editor";
 
       return (
         <div className="flex-1 relative h-full">
           {/* Editor */}
           <div
             className={`absolute inset-0 w-full h-full ${
-              currentMode !== "react" ? "z-10" : "z-0"
+              currentMode !== "preview" ? "z-10" : "z-0"
             }`}
             style={{
-              visibility: currentMode !== "react" ? "visible" : "hidden",
-              pointerEvents: currentMode !== "react" ? "auto" : "none",
+              visibility: currentMode !== "preview" ? "visible" : "hidden",
+              pointerEvents: currentMode !== "preview" ? "auto" : "none",
             }}
           >
             <CodeEditor {...props} content={displayContent} />
@@ -349,11 +424,11 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           {/* Preview */}
           <div
             className={`absolute inset-0 w-full h-full ${
-              currentMode === "react" ? "z-10" : "z-0"
+              currentMode === "preview" ? "z-10" : "z-0"
             }`}
             style={{
-              visibility: currentMode === "react" ? "visible" : "hidden",
-              pointerEvents: currentMode === "react" ? "auto" : "none",
+              visibility: currentMode === "preview" ? "visible" : "hidden",
+              pointerEvents: currentMode === "preview" ? "auto" : "none",
             }}
           >
             <div className="h-full w-full border border-border rounded-md overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -406,14 +481,13 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       );
     };
 
-    const switchToCodeMode = () => {
-      console.log("Switching to code mode");
-      setMetadata((prev) => ({ ...prev, mode: "code" }));
+    // Tab navigation functions
+    const switchToEditorMode = () => {
+      setMetadata((prev) => ({ ...prev, mode: "editor" }));
     };
 
-    const switchToReactMode = () => {
-      console.log("Switching to React mode");
-      setMetadata((prev) => ({ ...prev, mode: "react" }));
+    const switchToPreviewMode = () => {
+      setMetadata((prev) => ({ ...prev, mode: "preview" }));
     };
 
     return (
@@ -424,9 +498,9 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         {/* Tab navigation */}
         <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 px-4">
           <button
-            onClick={switchToCodeMode}
+            onClick={switchToEditorMode}
             className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center ${
-              (metadata?.mode || "code") !== "react"
+              !metadata || metadata.mode !== "preview"
                 ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
                 : "text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
             }`}
@@ -445,23 +519,23 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                 d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
               />
             </svg>
-            Editor
+            <span>Code Editor</span>
           </button>
 
           <button
-            onClick={switchToReactMode}
+            onClick={switchToPreviewMode}
             className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center ${
-              (metadata?.mode || "code") === "react"
+              metadata && metadata.mode === "preview"
                 ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
                 : "text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
             }`}
-            disabled={!metadata?.reactUrl}
+            disabled={!metadata || !metadata.reactUrl}
           >
             <svg
               className="w-4 h-4 mr-2"
-              viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
+              viewBox="0 0 24 24"
               xmlns="http://www.w3.org/2000/svg"
             >
               <path
@@ -469,20 +543,15 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                 strokeLinejoin="round"
                 strokeWidth="2"
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
+              ></path>
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-              />
+              ></path>
             </svg>
-            Preview
-            {!metadata?.reactUrl && (
-              <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                Run code first
-              </span>
-            )}
+            <span>Live Preview</span>
           </button>
         </div>
 
@@ -499,19 +568,33 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         const runId = generateUUID();
 
         // Set status for the new run
-        setMetadata((metadata) => ({
-          ...metadata,
-          outputs: [
-            ...metadata.outputs,
-            {
-              id: runId,
-              contents: [],
-              status: "in_progress",
-            },
-          ],
-          // Set mode to react in advance
-          mode: "react",
-        }));
+        setMetadata((metadata) => {
+          if (!metadata)
+            return {
+              outputs: [
+                {
+                  id: runId,
+                  contents: [],
+                  status: "in_progress",
+                },
+              ],
+              mode: "preview",
+            }; // Initialize metadata if null
+
+          return {
+            ...metadata,
+            outputs: [
+              ...metadata.outputs,
+              {
+                id: runId,
+                contents: [],
+                status: "in_progress",
+              },
+            ],
+            // Set mode to preview in advance
+            mode: "preview",
+          };
+        });
 
         // Dispatch custom event to trigger React rendering
         if (typeof window !== "undefined") {

@@ -40,7 +40,7 @@ export function useEditorState({
   // Initialize with default metadata if not provided
   const defaultMetadata: EditorMetadata = {
     outputs: [],
-    mode: "editor", // Default to editor mode (previously code)
+    mode: "preview", // Default to preview mode (previously editor)
     ...initialMetadata,
   };
 

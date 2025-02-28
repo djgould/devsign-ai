@@ -90,7 +90,8 @@ const CodePreview = forwardRef(
             )}
             <iframe
               ref={ref}
-              className="w-full h-full border-0 rounded-lg shadow-lg transition-all duration-300"
+              src={reactUrl}
+              className="w-full h-full border-0 rounded-lg shadow-lg transition-all duration-300 bg-white"
               sandbox="allow-scripts allow-forms allow-same-origin"
               onLoad={handleIframeLoad}
               onError={handleIframeError}
@@ -131,7 +132,7 @@ const CodePreview = forwardRef(
               <div className="inline-block relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-70 blur-xl"></div>
                 <button
-                  className="relative px-6 py-3 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded-lg font-medium shadow-md hover:shadow-lg transform hover:translate-y-[-2px] transition-all duration-300"
+                  className="relative px-6 py-3 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded-lg font-medium shadow-md hover:shadow-lg transform hover:translate-y-[-2px] transition-all duration-300 text-lg"
                   onClick={handleRunPreview}
                 >
                   Run Preview
