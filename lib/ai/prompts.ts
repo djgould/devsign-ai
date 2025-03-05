@@ -85,23 +85,8 @@ You are a spreadsheet creation assistant. Create a spreadsheet in csv format bas
 export const updateDocumentPrompt = (
   currentContent: string | null,
   type: ArtifactKind
-) =>
-  type === "text"
-    ? `\
-Improve the following contents of the document based on the given prompt.
-
-${currentContent}
-`
-    : type === "code"
-    ? `\
+) => `\
 Improve the following JavaScript code snippet based on the given prompt. Always return valid JavaScript code, never Python or other languages.
 
 ${currentContent}
-`
-    : type === "sheet"
-    ? `\
-Improve the following spreadsheet based on the given prompt.
-
-${currentContent}
-`
-    : "";
+`;

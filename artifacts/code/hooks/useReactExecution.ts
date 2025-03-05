@@ -10,7 +10,8 @@ interface ConsoleOutputContent {
 // Execute a React component in WebContainer
 export async function executeReactComponent(
   code: string,
-  webcontainer: any
+  webcontainer: any,
+  onProgress?: (status: string) => void
 ): Promise<{
   url: string;
   outputContent: Array<ConsoleOutputContent>;
@@ -18,15 +19,24 @@ export async function executeReactComponent(
 }> {
   const outputContent: Array<ConsoleOutputContent> = [];
 
+  // Helper function to update both output content and progress status
+  const updateProgress = (message: string) => {
+    outputContent.push({
+      type: "text",
+      value: message,
+    });
+
+    if (onProgress) {
+      onProgress(message);
+    }
+  };
+
   try {
     if (!webcontainer) {
       throw new Error("WebContainer is not available");
     }
 
-    outputContent.push({
-      type: "text",
-      value: "🔄 Setting up React environment...",
-    });
+    updateProgress("🔄 Setting up React environment...");
 
     // Extract component name from the code
     let componentName = "MyComponent";
@@ -41,6 +51,7 @@ export async function executeReactComponent(
     // Create directories first - more reliable than mounting with nested paths
     try {
       // Create root-level files first
+      updateProgress("📁 Creating project structure...");
       await webcontainer.mount({
         "package.json": reactTemplateFiles["package.json"],
         "vite.config.js": reactTemplateFiles["vite.config.js"],
@@ -49,15 +60,13 @@ export async function executeReactComponent(
         "postcss.config.js": reactTemplateFiles["postcss.config.js"],
       });
 
-      outputContent.push({
-        type: "text",
-        value: "📦 Root files mounted",
-      });
+      updateProgress("📦 Root files mounted");
 
       // Explicitly create src directory
       await webcontainer.fs.mkdir("src", { recursive: true });
 
       // Add src files one by one
+      updateProgress("📄 Creating source files...");
       await webcontainer.fs.writeFile(
         "src/main.jsx",
         reactTemplateFiles["src/main.jsx"].file.contents
@@ -75,16 +84,10 @@ export async function executeReactComponent(
         reactTemplateFiles["src/index.css"].file.contents
       );
 
-      outputContent.push({
-        type: "text",
-        value: "📦 Source files created successfully",
-      });
+      updateProgress("📦 Source files created successfully");
     } catch (error: any) {
       console.error("Error setting up file structure:", error);
-      outputContent.push({
-        type: "text",
-        value: `🚫 Error setting up file structure: ${error.message}`,
-      });
+      updateProgress(`🚫 Error setting up file structure: ${error.message}`);
       throw error;
     }
 
@@ -98,20 +101,15 @@ export async function executeReactComponent(
 
     // Write the component to a file
     try {
+      updateProgress(`✏️ Writing your ${componentName} component...`);
       await webcontainer.fs.writeFile(
         `src/components/${componentName}.jsx`,
         code
       );
-      outputContent.push({
-        type: "text",
-        value: `✅ Created component: ${componentName}`,
-      });
+      updateProgress(`✅ Created component: ${componentName}`);
     } catch (error: any) {
       console.error("Error writing component file:", error);
-      outputContent.push({
-        type: "text",
-        value: `🚫 Error writing component: ${error.message}`,
-      });
+      updateProgress(`🚫 Error writing component: ${error.message}`);
       throw error;
     }
 
@@ -139,25 +137,17 @@ export default App;
 `;
 
     try {
+      updateProgress("📝 Configuring React application...");
       await webcontainer.fs.writeFile("src/App.jsx", appCode);
-      outputContent.push({
-        type: "text",
-        value: "📝 Updated App.jsx to use your component",
-      });
+      updateProgress("📝 Updated App.jsx to use your component");
     } catch (error: any) {
       console.error("Error updating App.jsx:", error);
-      outputContent.push({
-        type: "text",
-        value: `🚫 Error updating App.jsx: ${error.message}`,
-      });
+      updateProgress(`🚫 Error updating App.jsx: ${error.message}`);
       throw error;
     }
 
     // Install dependencies
-    outputContent.push({
-      type: "text",
-      value: "📦 Installing dependencies (this may take a moment)...",
-    });
+    updateProgress("📦 Installing dependencies (this may take a moment)...");
 
     try {
       const installProcess = await webcontainer.spawn("npm", ["install"]);
@@ -179,6 +169,18 @@ export default App;
               type: "text",
               value: output,
             });
+
+            // Report npm progress updates
+            if (output.includes("added") && onProgress) {
+              onProgress("Installing React dependencies...");
+            } else if (output.includes("Done") && onProgress) {
+              onProgress("Dependencies installed successfully");
+            } else if (
+              (output.includes("error") || output.includes("npm ERR!")) &&
+              onProgress
+            ) {
+              onProgress(`Error during installation: ${output.split("\n")[0]}`);
+            }
           }
         },
       });
@@ -192,24 +194,15 @@ export default App;
         );
       }
 
-      outputContent.push({
-        type: "text",
-        value: "✅ Dependencies installed successfully",
-      });
+      updateProgress("✅ Dependencies installed successfully");
     } catch (error: any) {
       console.error("Error installing dependencies:", error);
-      outputContent.push({
-        type: "text",
-        value: `🚫 Error installing dependencies: ${error.message}`,
-      });
+      updateProgress(`🚫 Error installing dependencies: ${error.message}`);
       throw error;
     }
 
     // Start the Vite dev server
-    outputContent.push({
-      type: "text",
-      value: "🚀 Starting React development server...",
-    });
+    updateProgress("🚀 Starting React development server...");
 
     try {
       // Create a promise that will be resolved when we get the server URL
@@ -226,12 +219,21 @@ export default App;
         console.warn(
           "⚠️ Server-ready event timeout - falling back to alternatives"
         );
+
+        if (onProgress) {
+          onProgress("Server taking longer than expected... still trying");
+        }
         // Don't reject yet - we'll try fallback mechanisms
       }, 15000);
 
       // Start the dev server
+      updateProgress("🛠️ Building and transpiling your component...");
       const devProcess = await webcontainer.spawn("npm", ["run", "dev"]);
       console.log("🚀 Dev server started");
+
+      if (onProgress) {
+        onProgress("Starting Vite development server...");
+      }
 
       // Get server output for debugging and fallback URL detection
       const outputChunks: string[] = [];
@@ -260,12 +262,20 @@ export default App;
                   type: "text",
                   value: `Error: ${errorMessage}`,
                 });
+
+                if (onProgress) {
+                  onProgress(`Build error: ${errorMessage}`);
+                }
               } else {
                 outputContent.push({
                   type: "text",
                   value:
                     "A build error occurred. Please check your code for syntax errors.",
                 });
+
+                if (onProgress) {
+                  onProgress("Build error: Check your code for syntax errors");
+                }
               }
             } else {
               // For normal output, display it directly
@@ -273,6 +283,15 @@ export default App;
                 type: "text",
                 value: output,
               });
+
+              // Report important build events
+              if (output.includes("transforming") && onProgress) {
+                onProgress("Transforming JSX code...");
+              } else if (output.includes("build completed") && onProgress) {
+                onProgress("Build completed, starting server...");
+              } else if (output.includes("ready in") && onProgress) {
+                onProgress("Development server ready!");
+              }
             }
           },
         })
@@ -287,10 +306,7 @@ export default App;
           console.log(`🎯 Server ready on port ${port} at ${url}`);
           clearTimeout(timeoutId);
 
-          outputContent.push({
-            type: "text",
-            value: `🌐 Server ready at: ${url}`,
-          });
+          updateProgress(`🌐 Server ready at: ${url}`);
 
           resolveUrlPromise(url);
         });
@@ -313,10 +329,7 @@ export default App;
 
               if (url) {
                 clearTimeout(timeoutId);
-                outputContent.push({
-                  type: "text",
-                  value: `🌐 Server ready at: ${url}`,
-                });
+                updateProgress(`🌐 Server ready at: ${url}`);
                 resolveUrlPromise(url);
               }
             } catch (err) {
@@ -338,20 +351,16 @@ export default App;
             console.log("🔄 Extracted URL from server output:", url);
 
             clearTimeout(timeoutId);
-            outputContent.push({
-              type: "text",
-              value: `🌐 Server ready at: ${url} (extracted from logs)`,
-            });
+            updateProgress(`🌐 Server ready at: ${url} (extracted from logs)`);
             resolveUrlPromise(url);
           } else {
             // Fallback 3: Default to standard localhost:3000
             console.warn("⚠️ Using default URL fallback");
             const defaultUrl = "http://localhost:3000";
 
-            outputContent.push({
-              type: "text",
-              value: `⚠️ Could not detect server URL, trying default: ${defaultUrl}`,
-            });
+            updateProgress(
+              `⚠️ Could not detect server URL, trying default: ${defaultUrl}`
+            );
             resolveUrlPromise(defaultUrl);
           }
         }, 10000);
@@ -371,32 +380,25 @@ export default App;
         const serverUrl = await urlPromise;
         clearTimeout(hardTimeoutId);
 
+        updateProgress("✨ Component ready for preview!");
+
         return { url: serverUrl, outputContent };
       } catch (error: any) {
         console.error("❌ Error waiting for server URL:", error);
         clearTimeout(hardTimeoutId);
 
-        outputContent.push({
-          type: "text",
-          value: `🚫 Error waiting for server URL: ${error.message}`,
-        });
+        updateProgress(`🚫 Error waiting for server URL: ${error.message}`);
         throw error;
       }
     } catch (error: any) {
       console.error("Error starting dev server:", error);
-      outputContent.push({
-        type: "text",
-        value: `🚫 Error starting dev server: ${error.message}`,
-      });
+      updateProgress(`🚫 Error starting dev server: ${error.message}`);
       throw error;
     }
   } catch (error: any) {
     const errorMsg = error.message || "Error executing React component";
     console.error("React execution error:", error);
-    outputContent.push({
-      type: "text",
-      value: `🚫 Error: ${errorMsg}`,
-    });
+    updateProgress(`🚫 Error: ${errorMsg}`);
     return { url: "", outputContent, error: errorMsg };
   }
 }

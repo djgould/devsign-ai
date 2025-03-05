@@ -68,6 +68,78 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     }
   },
   content: ({ metadata, setMetadata, ...props }) => {
+    // Add animation styles
+    useEffect(() => {
+      // Add CSS animation for progress bar and loader
+      const style = document.createElement("style");
+      style.textContent = `
+        @keyframes progress {
+          0% { width: 0%; }
+          20% { width: 20%; }
+          40% { width: 40%; }
+          60% { width: 60%; }
+          80% { width: 80%; }
+          100% { width: 20%; }
+        }
+        .animate-progress {
+          animation: progress 10s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-ring {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+          70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 20px, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+        
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        .pulse-animation {
+          animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+        }
+        
+        .fade-in-up {
+          animation: fadeInUp 0.5s ease-out forwards;
+        }
+        
+        .shimmer {
+          background: linear-gradient(90deg, 
+            rgba(255,255,255,0) 0%, 
+            rgba(255,255,255,0.08) 50%, 
+            rgba(255,255,255,0) 100%);
+          background-size: 200% 100%;
+          animation: shimmer 2.5s infinite;
+        }
+
+        .shimmer-dark {
+          background: linear-gradient(90deg, 
+            rgba(30,41,59,0) 0%, 
+            rgba(30,41,59,0.15) 50%, 
+            rgba(30,41,59,0) 100%);
+          background-size: 200% 100%;
+          animation: shimmer 2.5s infinite;
+        }
+      `;
+      document.head.appendChild(style);
+
+      return () => {
+        document.head.removeChild(style);
+      };
+    }, []);
+
     // Default content for the editor
     const displayContent =
       props.content ||
@@ -86,6 +158,35 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     } = useWebContainer();
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Track the WebContainer initialization stage
+    const [containerStatus, setContainerStatus] =
+      useState<string>("initializing");
+
+    // Effect to track WebContainer initialization stages
+    useEffect(() => {
+      if (containerError) {
+        setContainerStatus("error");
+      } else if (!isLoading && webcontainer) {
+        setContainerStatus("ready");
+      } else if (isLoading) {
+        // Simulate staged loading process
+        const stages = [
+          "initializing environment",
+          "installing dependencies",
+          "preparing server",
+          "almost ready",
+        ];
+
+        let currentStage = 0;
+        const interval = setInterval(() => {
+          setContainerStatus(stages[currentStage]);
+          currentStage = (currentStage + 1) % stages.length;
+        }, 2500);
+
+        return () => clearInterval(interval);
+      }
+    }, [isLoading, webcontainer, containerError]);
 
     // Auto-execute on initial load if we have content and no reactUrl yet
     useEffect(() => {
@@ -199,12 +300,53 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             };
           });
 
+          setContainerStatus("preparing component");
+
+          // Add progress updates
+          const updateProgressStatus = (status: string) => {
+            setContainerStatus(status);
+            setMetadata((metadata) => {
+              if (!metadata)
+                return {
+                  outputs: [
+                    {
+                      id: runningCode.runId,
+                      contents: [{ type: "text", value: status }],
+                      status: "in_progress",
+                    },
+                  ],
+                  mode: "preview",
+                };
+
+              return {
+                ...metadata,
+                outputs: [
+                  ...metadata.outputs.filter(
+                    (output) => output.id !== runningCode.runId
+                  ),
+                  {
+                    id: runningCode.runId,
+                    contents: [
+                      ...(metadata.outputs.find(
+                        (o) => o.id === runningCode.runId
+                      )?.contents || []),
+                      { type: "text", value: status },
+                    ],
+                    status: "in_progress",
+                  },
+                ],
+              };
+            });
+          };
+
           const result = await executeReactComponent(
             runningCode.content,
-            webcontainer
+            webcontainer,
+            updateProgressStatus
           );
 
           if (result.error) {
+            setContainerStatus("error");
             setMetadata((metadata) => {
               if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
 
@@ -257,6 +399,8 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             if (iframeRef.current && result.url) {
               iframeRef.current.src = result.url;
             }
+
+            setContainerStatus("preview ready");
           }
 
           // Clear running state
@@ -285,72 +429,6 @@ export const codeArtifact = new Artifact<"code", Metadata>({
 
       executeCode();
     }, [runningCode, webcontainer, isLoading, containerError, setMetadata]);
-
-    // WebContainer status display component
-    const WebContainerStatus = () => {
-      if (isLoading) {
-        return (
-          <div className="p-2 mb-3 rounded-lg overflow-hidden shadow-md border border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/80 dark:to-blue-900/80">
-            <div className="flex items-center">
-              <div className="relative h-5 w-5 mr-2">
-                <div className="absolute inset-0 rounded-full bg-blue-400/30 dark:bg-blue-500/30 animate-ping"></div>
-                <svg
-                  className="relative animate-spin w-5 h-5 text-blue-600 dark:text-blue-400"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              </div>
-              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                Initializing runtime environment...
-              </span>
-            </div>
-          </div>
-        );
-      }
-
-      if (containerError) {
-        return (
-          <div className="p-2 mb-3 rounded-lg overflow-hidden shadow-sm border border-red-200 dark:border-red-800 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/80 dark:to-red-900/80">
-            <div className="flex items-center">
-              <svg
-                className="h-5 w-5 text-red-600 dark:text-red-400 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              <span className="text-sm font-medium text-red-800 dark:text-red-200">
-                Runtime environment unavailable
-              </span>
-            </div>
-          </div>
-        );
-      }
-
-      return null;
-    };
 
     // Add this effect to handle the iframe src properly
     useEffect(() => {
@@ -434,36 +512,186 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             <div className="h-full w-full border border-border rounded-md overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
               {!metadata?.reactUrl && (
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-center p-8 max-w-md">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900 mb-4">
-                      <svg
-                        className="w-8 h-8 text-blue-600 dark:text-blue-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2 text-gray-800 dark:text-gray-200">
-                      No preview available
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      Run your code to see the live preview of your React
-                      component
-                    </p>
+                  <div className="text-center p-8 max-w-md w-full fade-in-up">
+                    {/* Loading/No Preview State */}
+                    {isLoading || runningCode ? (
+                      <div className="relative bg-gray-50/90 dark:bg-gray-900/95 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden p-6 border border-gray-100/50 dark:border-gray-700/30">
+                        {/* Animated background effect */}
+                        <div className="absolute inset-0 opacity-10 overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-100 via-indigo-100 to-blue-100 dark:from-blue-900 dark:via-indigo-900 dark:to-blue-900 dark:opacity-30 shimmer-dark"></div>
+                          <div className="absolute h-40 w-40 rounded-full bg-blue-400/10 dark:bg-blue-400/5 -top-20 -left-20 blur-3xl"></div>
+                          <div className="absolute h-40 w-40 rounded-full bg-indigo-400/10 dark:bg-indigo-400/5 -bottom-20 -right-20 blur-3xl"></div>
+                        </div>
+
+                        {/* Loading Icon */}
+                        <div className="relative mb-6 flex justify-center">
+                          <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center pulse-animation">
+                            <div className="w-16 h-16 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center relative">
+                              <svg
+                                className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                              {runningCode && (
+                                <div
+                                  className="absolute inset-0 rounded-full border-2 border-blue-500 dark:border-blue-400 border-dashed animate-spin"
+                                  style={{ animationDuration: "10s" }}
+                                ></div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Text */}
+                        <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100 relative z-10">
+                          {isLoading && !runningCode
+                            ? "Preparing Environment"
+                            : "Rendering Your Component"}
+                        </h3>
+
+                        {/* Status Message */}
+                        <div className="mb-6 relative z-10">
+                          <div className="flex items-center justify-center mb-2">
+                            <span className="font-medium text-blue-700 dark:text-blue-300 text-sm">
+                              {containerStatus}
+                            </span>
+                            <span className="inline-flex ml-2">
+                              <span
+                                className="w-1 h-1 bg-blue-600 dark:bg-blue-300 rounded-full animate-bounce"
+                                style={{ animationDelay: "0ms" }}
+                              ></span>
+                              <span
+                                className="w-1 h-1 mx-1 bg-blue-600 dark:bg-blue-300 rounded-full animate-bounce"
+                                style={{ animationDelay: "150ms" }}
+                              ></span>
+                              <span
+                                className="w-1 h-1 bg-blue-600 dark:bg-blue-300 rounded-full animate-bounce"
+                                style={{ animationDelay: "300ms" }}
+                              ></span>
+                            </span>
+                          </div>
+
+                          {/* Progress Bar with smoother and more accurate appearance */}
+                          <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-4">
+                            <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-500 h-full rounded-full animate-progress"></div>
+                          </div>
+
+                          {/* Status Logs */}
+                          {metadata?.outputs?.length > 0 &&
+                            metadata.outputs[metadata.outputs.length - 1]
+                              ?.contents?.length > 0 && (
+                              <div className="text-left mt-4 text-sm text-gray-700 dark:text-gray-300 bg-gray-100/80 dark:bg-gray-800/90 p-3 rounded-lg max-h-24 overflow-y-auto border border-gray-200 dark:border-gray-700 font-mono">
+                                {metadata.outputs[
+                                  metadata.outputs.length - 1
+                                ].contents
+                                  .slice(-3)
+                                  .map((content, i) => (
+                                    <div
+                                      key={i}
+                                      className="mb-1.5 flex items-start"
+                                    >
+                                      <span className="text-blue-600 dark:text-blue-300 mr-2">
+                                        »
+                                      </span>
+                                      <span>{content.value}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                        </div>
+
+                        {/* Error message if there's a container error */}
+                        {containerError && (
+                          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 rounded-lg p-3 text-sm">
+                            <p className="font-semibold mb-1">Error</p>
+                            <p className="text-red-700 dark:text-red-200">
+                              {containerError}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-8 px-6 bg-gray-50/90 dark:bg-gray-900/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100/50 dark:border-gray-700/30">
+                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 mb-6">
+                          <svg
+                            className="w-10 h-10 text-blue-600 dark:text-blue-300"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        </div>
+
+                        <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-gray-100">
+                          No preview available
+                        </h3>
+                        <p className="text-gray-700 dark:text-gray-300 mb-6">
+                          Run your code to see the live preview of your React
+                          component
+                        </p>
+
+                        <button
+                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transform hover:translate-y-[-2px] transition-all duration-300 text-base"
+                          onClick={() => {
+                            const runId = generateUUID();
+                            setRunningCode({
+                              runId,
+                              content: props.content || displayContent,
+                            });
+                          }}
+                        >
+                          <svg
+                            className="w-5 h-5 mr-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          Run Preview
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -492,9 +720,6 @@ export const codeArtifact = new Artifact<"code", Metadata>({
 
     return (
       <div className="w-full h-full flex flex-col bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
-        {/* Show WebContainer status information */}
-        <WebContainerStatus />
-
         {/* Tab navigation */}
         <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 px-4">
           <button

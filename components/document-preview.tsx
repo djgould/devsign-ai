@@ -9,18 +9,15 @@ import {
   useRef,
 } from "react";
 import { ArtifactKind, UIArtifact } from "./artifact";
-import { FileIcon, FullscreenIcon, ImageIcon, LoaderIcon } from "./icons";
+import { FileIcon, FullscreenIcon, LoaderIcon } from "./icons";
 import { cn, fetcher } from "@/lib/utils";
 import { Document } from "@/lib/db/schema";
 import { InlineDocumentSkeleton } from "./document-skeleton";
 import useSWR from "swr";
-import { Editor } from "./text-editor";
 import { DocumentToolCall, DocumentToolResult } from "./document";
 import { CodeEditor } from "./code-editor";
 import { useArtifact } from "@/hooks/use-artifact";
 import equal from "fast-deep-equal";
-import { SpreadsheetEditor } from "./sheet-editor";
-import { ImageEditor } from "./image-editor";
 
 interface DocumentPreviewProps {
   isReadonly: boolean;
@@ -129,15 +126,9 @@ const LoadingSkeleton = ({ artifactKind }: { artifactKind: ArtifactKind }) => (
         <FullscreenIcon />
       </div>
     </div>
-    {artifactKind === "image" ? (
-      <div className="overflow-y-scroll border rounded-b-2xl bg-muted border-t-0 dark:border-zinc-700">
-        <div className="animate-pulse h-[257px] bg-muted-foreground/20 w-full" />
-      </div>
-    ) : (
-      <div className="overflow-y-scroll border rounded-b-2xl p-8 pt-4 bg-muted border-t-0 dark:border-zinc-700">
-        <InlineDocumentSkeleton />
-      </div>
-    )}
+    <div className="overflow-y-scroll border rounded-b-2xl p-8 pt-4 bg-muted border-t-0 dark:border-zinc-700">
+      <InlineDocumentSkeleton />
+    </div>
   </div>
 );
 
@@ -215,8 +206,6 @@ const PureDocumentHeader = ({
           <div className="animate-spin">
             <LoaderIcon />
           </div>
-        ) : kind === "image" ? (
-          <ImageIcon />
         ) : (
           <FileIcon />
         )}
@@ -239,10 +228,7 @@ const DocumentContent = ({ document }: { document: Document }) => {
 
   const containerClassName = cn(
     "h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700",
-    {
-      "p-4 sm:px-14 sm:py-16": document.kind === "text",
-      "p-0": document.kind === "code",
-    }
+    "p-0"
   );
 
   const commonProps = {
@@ -256,30 +242,11 @@ const DocumentContent = ({ document }: { document: Document }) => {
 
   return (
     <div className={containerClassName}>
-      {document.kind === "text" ? (
-        <Editor {...commonProps} onSaveContent={() => {}} />
-      ) : document.kind === "code" ? (
-        <div className="flex flex-1 relative w-full">
-          <div className="absolute inset-0">
-            <CodeEditor {...commonProps} onSaveContent={() => {}} />
-          </div>
+      <div className="flex flex-1 relative w-full">
+        <div className="absolute inset-0">
+          <CodeEditor {...commonProps} onSaveContent={() => {}} />
         </div>
-      ) : document.kind === "sheet" ? (
-        <div className="flex flex-1 relative size-full p-4">
-          <div className="absolute inset-0">
-            <SpreadsheetEditor {...commonProps} />
-          </div>
-        </div>
-      ) : document.kind === "image" ? (
-        <ImageEditor
-          title={document.title}
-          content={document.content ?? ""}
-          isCurrentVersion={true}
-          currentVersionIndex={0}
-          status={artifact.status}
-          isInline={true}
-        />
-      ) : null}
+      </div>
     </div>
   );
 };
