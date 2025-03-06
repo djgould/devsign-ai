@@ -32,6 +32,8 @@ import React from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useSession } from "next-auth/react";
+import { SidebarToggle } from "./sidebar-toggle";
+import isEqual from "fast-deep-equal";
 
 export const artifactDefinitions = [codeArtifact];
 export type ArtifactKind = (typeof artifactDefinitions)[number]["kind"];
@@ -292,6 +294,23 @@ function PureArtifact({
 
   const { data: session } = useSession();
 
+  // Use useRef to store the previous version of metadata for deep comparison
+  const prevMetadataRef = React.useRef(metadata);
+
+  // Memoize metadata using deep equality check to prevent unnecessary re-renders
+  const memoizedMetadata = React.useMemo(() => {
+    // Only update the reference if the deep contents have changed
+    if (!isEqual(prevMetadataRef.current, metadata)) {
+      prevMetadataRef.current = metadata;
+    }
+    return prevMetadataRef.current;
+  }, [metadata]);
+
+  const memoizedSetMetadata = React.useCallback(
+    (updater: any) => setMetadata(updater),
+    [setMetadata]
+  );
+
   return (
     <AnimatePresence>
       {artifact.isVisible && (
@@ -316,7 +335,7 @@ function PureArtifact({
             />
           )}
 
-          <SidebarProvider defaultOpen={true}>
+          <SidebarProvider defaultOpen={false}>
             <AppSidebar user={session?.user} />
             <SidebarInset className="flex flex-row h-full">
               {!isMobile && (
@@ -353,6 +372,9 @@ function PureArtifact({
                   </AnimatePresence>
 
                   <div className="flex flex-col h-full justify-between items-center gap-4">
+                    <div className="w-full px-4 pt-4 flex justify-start">
+                      <SidebarToggle />
+                    </div>
                     <ArtifactMessages
                       chatId={chatId}
                       isLoading={isLoading}
@@ -451,8 +473,6 @@ function PureArtifact({
               >
                 <div className="p-2 flex flex-row justify-between items-start">
                   <div className="flex flex-row gap-4 items-start">
-                    <ArtifactCloseButton />
-
                     <div className="flex flex-col">
                       <div className="font-medium">{artifact.title}</div>
 
@@ -482,8 +502,8 @@ function PureArtifact({
                     handleVersionChange={handleVersionChange}
                     isCurrentVersion={isCurrentVersion}
                     mode={mode}
-                    metadata={metadata}
-                    setMetadata={setMetadata}
+                    metadata={memoizedMetadata}
+                    setMetadata={memoizedSetMetadata}
                   />
                 </div>
 
@@ -505,8 +525,8 @@ function PureArtifact({
                       isCurrentVersion={isCurrentVersion}
                       getDocumentContentById={getDocumentContentById}
                       isLoading={isDocumentsFetching && !artifact.content}
-                      metadata={metadata}
-                      setMetadata={setMetadata}
+                      metadata={memoizedMetadata}
+                      setMetadata={memoizedSetMetadata}
                     />
 
                     <AnimatePresence>
@@ -544,10 +564,15 @@ function PureArtifact({
 }
 
 export const Artifact = memo(PureArtifact, (prevProps, nextProps) => {
+  // We need to re-render when input changes to update the textarea
+  if (prevProps.input !== nextProps.input) return false;
+
+  // Also re-render for these other important prop changes
   if (prevProps.isLoading !== nextProps.isLoading) return false;
   if (!equal(prevProps.votes, nextProps.votes)) return false;
-  if (prevProps.input !== nextProps.input) return false;
-  if (!equal(prevProps.messages, nextProps.messages.length)) return false;
+  if (prevProps.messages.length !== nextProps.messages.length) return false;
+  if (!equal(prevProps.attachments, nextProps.attachments)) return false;
 
+  // Don't re-render for other prop changes
   return true;
 });

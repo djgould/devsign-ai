@@ -10,7 +10,14 @@ import {
 import { toast } from "sonner";
 import { generateUUID } from "@/lib/utils";
 import { useWebContainer } from "@/components/web-container-provider";
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, memo, forwardRef } from "react";
+
+// Create a memoized iframe component to prevent re-renders
+const MemoizedIframe = memo(
+  forwardRef<HTMLIFrameElement, React.IframeHTMLAttributes<HTMLIFrameElement>>(
+    (props, ref) => <iframe ref={ref} {...props} key="stable-iframe-key" />
+  )
+);
 import { executeReactComponent } from "./hooks/useReactExecution";
 
 // Define simplified types to remove JavaScript execution specific types
@@ -190,6 +197,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
 
     // Auto-execute on initial load if we have content and no reactUrl yet
     useEffect(() => {
+      console.log("useeffect");
       // Only auto-execute if:
       // 1. WebContainer is ready
       // 2. We have content to run
@@ -695,12 +703,12 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                   </div>
                 </div>
               )}
-              <iframe
+              <MemoizedIframe
                 ref={iframeRef}
                 title="React Component Preview"
                 className="w-full h-full border-none"
                 allow="clipboard-read; clipboard-write"
-                key={`frame-${metadata?.reactUrl || "placeholder"}`}
+                key="stable-iframe-key"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-presentation"
               />
             </div>
@@ -785,6 +793,43 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     );
   },
   actions: [
+    {
+      icon: <CodeIcon size={18} />,
+      label: "Editor",
+      description: "View the code editor",
+      onClick: ({ content, setMetadata }) => {
+        const runId = generateUUID();
+
+        // Set status for the new run
+        setMetadata((metadata) => {
+          if (!metadata)
+            return {
+              outputs: [
+                {
+                  id: runId,
+                  contents: [],
+                  status: "in_progress",
+                },
+              ],
+              mode: "editor",
+            }; // Initialize metadata if null
+
+          return {
+            ...metadata,
+            outputs: [
+              ...metadata.outputs,
+              {
+                id: runId,
+                contents: [],
+                status: "in_progress",
+              },
+            ],
+            // Set mode to preview in advance
+            mode: "editor",
+          };
+        });
+      },
+    },
     {
       icon: <CodeIcon size={18} />,
       label: "Preview",
