@@ -29,6 +29,9 @@ import { useArtifact } from "@/hooks/use-artifact";
 import { codeArtifact } from "@/artifacts/code/client";
 import equal from "fast-deep-equal";
 import React from "react";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { useSession } from "next-auth/react";
 
 export const artifactDefinitions = [codeArtifact];
 export type ArtifactKind = (typeof artifactDefinitions)[number]["kind"];
@@ -287,6 +290,8 @@ function PureArtifact({
     }
   }, [artifact.documentId, artifactDefinition, setMetadata, setArtifact]);
 
+  const { data: session } = useSession();
+
   return (
     <AnimatePresence>
       {artifact.isVisible && (
@@ -311,226 +316,227 @@ function PureArtifact({
             />
           )}
 
-          {!isMobile && (
-            <motion.div
-              className="relative w-[400px] bg-muted dark:bg-background h-dvh shrink-0"
-              initial={{ opacity: 0, x: 10, scale: 1 }}
-              animate={{
-                opacity: 1,
-                x: 0,
-                scale: 1,
-                transition: {
-                  delay: 0.2,
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 30,
-                },
-              }}
-              exit={{
-                opacity: 0,
-                x: 0,
-                scale: 1,
-                transition: { duration: 0 },
-              }}
-            >
-              <AnimatePresence>
-                {!isCurrentVersion && (
-                  <motion.div
-                    className="left-0 absolute h-dvh w-[400px] top-0 bg-zinc-900/50 z-50"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  />
-                )}
-              </AnimatePresence>
-
-              <div className="flex flex-col h-full justify-between items-center gap-4">
-                <ArtifactMessages
-                  chatId={chatId}
-                  isLoading={isLoading}
-                  votes={votes}
-                  messages={messages}
-                  setMessages={setMessages}
-                  reload={reload}
-                  isReadonly={isReadonly}
-                  artifactStatus={artifact.status}
-                />
-
-                <form className="flex flex-row gap-2 relative items-end w-full px-4 pb-4">
-                  <MultimodalInput
-                    chatId={chatId}
-                    input={input}
-                    setInput={setInput}
-                    handleSubmit={handleSubmit}
-                    isLoading={isLoading}
-                    stop={stop}
-                    attachments={attachments}
-                    setAttachments={setAttachments}
-                    messages={messages}
-                    append={append}
-                    className="bg-background dark:bg-muted"
-                    setMessages={setMessages}
-                  />
-                </form>
-              </div>
-            </motion.div>
-          )}
-
-          <motion.div
-            className="fixed dark:bg-muted bg-background h-dvh flex flex-col overflow-y-scroll md:border-l dark:border-zinc-700 border-zinc-200"
-            initial={
-              isMobile
-                ? {
-                    opacity: 1,
-                    x: artifact.boundingBox.left,
-                    y: artifact.boundingBox.top,
-                    height: artifact.boundingBox.height,
-                    width: artifact.boundingBox.width,
-                    borderRadius: 50,
-                  }
-                : {
-                    opacity: 1,
-                    x: artifact.boundingBox.left,
-                    y: artifact.boundingBox.top,
-                    height: artifact.boundingBox.height,
-                    width: artifact.boundingBox.width,
-                    borderRadius: 50,
-                  }
-            }
-            animate={
-              isMobile
-                ? {
+          <SidebarProvider defaultOpen={true}>
+            <AppSidebar user={session?.user} />
+            <SidebarInset className="flex flex-row h-full">
+              {!isMobile && (
+                <motion.div
+                  className="relative w-[400px] bg-muted dark:bg-background h-dvh shrink-0 z-10"
+                  initial={{ opacity: 0, x: 10, scale: 1 }}
+                  animate={{
                     opacity: 1,
                     x: 0,
-                    y: 0,
-                    height: windowHeight || "100vh",
-                    width: windowWidth || "100vw",
-                    borderRadius: 0,
+                    scale: 1,
                     transition: {
-                      delay: 0,
+                      delay: 0.2,
                       type: "spring",
                       stiffness: 200,
                       damping: 30,
-                      duration: 5000,
                     },
-                  }
-                : {
-                    opacity: 1,
-                    x: 400,
-                    y: 0,
-                    height: windowHeight || "100vh",
-                    width: isMounted
-                      ? windowWidth
-                        ? windowWidth - 400
-                        : "calc(100vw - 400px)"
-                      : "calc(100vw - 400px)",
-                    borderRadius: 0,
-                    transition: {
-                      delay: 0,
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 30,
-                      duration: 5000,
-                    },
-                  }
-            }
-            exit={{
-              opacity: 0,
-              scale: 0.5,
-              transition: {
-                delay: 0.1,
-                type: "spring",
-                stiffness: 600,
-                damping: 30,
-              },
-            }}
-          >
-            <div className="p-2 flex flex-row justify-between items-start">
-              <div className="flex flex-row gap-4 items-start">
-                <ArtifactCloseButton />
+                  }}
+                  exit={{
+                    opacity: 0,
+                    x: 0,
+                    scale: 1,
+                    transition: { duration: 0 },
+                  }}
+                >
+                  <AnimatePresence>
+                    {!isCurrentVersion && (
+                      <motion.div
+                        className="left-0 absolute h-dvh w-[400px] top-0 bg-zinc-900/50 z-50"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      />
+                    )}
+                  </AnimatePresence>
 
-                <div className="flex flex-col">
-                  <div className="font-medium">{artifact.title}</div>
+                  <div className="flex flex-col h-full justify-between items-center gap-4">
+                    <ArtifactMessages
+                      chatId={chatId}
+                      isLoading={isLoading}
+                      votes={votes}
+                      messages={messages}
+                      setMessages={setMessages}
+                      reload={reload}
+                      isReadonly={isReadonly}
+                      artifactStatus={artifact.status}
+                    />
 
-                  {isContentDirty ? (
-                    <div className="text-sm text-muted-foreground">
-                      Saving changes...
-                    </div>
-                  ) : document ? (
-                    <div className="text-sm text-muted-foreground">
-                      {`Updated ${formatDistance(
-                        new Date(document.createdAt),
-                        new Date(),
-                        {
-                          addSuffix: true,
-                        }
-                      )}`}
-                    </div>
-                  ) : (
-                    <div className="w-32 h-3 mt-2 bg-muted-foreground/20 rounded-md animate-pulse" />
-                  )}
-                </div>
-              </div>
-
-              <ArtifactActions
-                artifact={artifact}
-                currentVersionIndex={currentVersionIndex}
-                handleVersionChange={handleVersionChange}
-                isCurrentVersion={isCurrentVersion}
-                mode={mode}
-                metadata={metadata}
-                setMetadata={setMetadata}
-              />
-            </div>
-
-            <div className="dark:bg-muted bg-background flex-1 overflow-y-auto !max-w-full p-4">
-              <div className="min-h-[500px] h-full flex flex-col">
-                <artifactDefinition.content
-                  title={artifact.title}
-                  content={
-                    isCurrentVersion
-                      ? artifact.content
-                      : getDocumentContentById(currentVersionIndex)
-                  }
-                  mode={mode}
-                  status={artifact.status}
-                  currentVersionIndex={currentVersionIndex}
-                  suggestions={[]}
-                  onSaveContent={saveContent}
-                  isInline={false}
-                  isCurrentVersion={isCurrentVersion}
-                  getDocumentContentById={getDocumentContentById}
-                  isLoading={isDocumentsFetching && !artifact.content}
-                  metadata={metadata}
-                  setMetadata={setMetadata}
-                />
-              </div>
-
-              <AnimatePresence>
-                {isCurrentVersion && (
-                  <Toolbar
-                    isToolbarVisible={isToolbarVisible}
-                    setIsToolbarVisible={setIsToolbarVisible}
-                    append={append}
-                    isLoading={isLoading}
-                    stop={stop}
-                    setMessages={setMessages}
-                    artifactKind={artifact.kind}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
-
-            <AnimatePresence>
-              {!isCurrentVersion && (
-                <VersionFooter
-                  currentVersionIndex={currentVersionIndex}
-                  documents={documents}
-                  handleVersionChange={handleVersionChange}
-                />
+                    <form className="flex flex-row gap-2 relative items-end w-full px-4 pb-4">
+                      <MultimodalInput
+                        chatId={chatId}
+                        input={input}
+                        setInput={setInput}
+                        handleSubmit={handleSubmit}
+                        isLoading={isLoading}
+                        stop={stop}
+                        attachments={attachments}
+                        setAttachments={setAttachments}
+                        messages={messages}
+                        append={append}
+                        className="bg-background dark:bg-muted"
+                        setMessages={setMessages}
+                      />
+                    </form>
+                  </div>
+                </motion.div>
               )}
-            </AnimatePresence>
-          </motion.div>
+
+              <motion.div
+                className="relative dark:bg-muted bg-background h-dvh flex flex-col overflow-y-scroll md:border-l dark:border-zinc-700 border-zinc-200 flex-1 z-0"
+                initial={
+                  isMobile
+                    ? {
+                        opacity: 1,
+                        x: artifact.boundingBox.left,
+                        y: artifact.boundingBox.top,
+                        height: artifact.boundingBox.height,
+                        width: artifact.boundingBox.width,
+                        borderRadius: 50,
+                      }
+                    : {
+                        opacity: 1,
+                        x: artifact.boundingBox.left,
+                        y: artifact.boundingBox.top,
+                        height: artifact.boundingBox.height,
+                        width: artifact.boundingBox.width,
+                        borderRadius: 50,
+                      }
+                }
+                animate={
+                  isMobile
+                    ? {
+                        opacity: 1,
+                        x: 0,
+                        y: 0,
+                        height: windowHeight || "100vh",
+                        width: windowWidth || "100vw",
+                        borderRadius: 0,
+                        transition: {
+                          delay: 0,
+                          type: "spring",
+                          stiffness: 200,
+                          damping: 30,
+                          duration: 5000,
+                        },
+                      }
+                    : {
+                        opacity: 1,
+                        x: 0,
+                        y: 0,
+                        height: windowHeight || "100vh",
+                        width: "auto",
+                        borderRadius: 0,
+                        transition: {
+                          delay: 0,
+                          type: "spring",
+                          stiffness: 200,
+                          damping: 30,
+                          duration: 5000,
+                        },
+                      }
+                }
+                exit={{
+                  opacity: 0,
+                  scale: 0.5,
+                  transition: {
+                    delay: 0.1,
+                    type: "spring",
+                    stiffness: 600,
+                    damping: 30,
+                  },
+                }}
+              >
+                <div className="p-2 flex flex-row justify-between items-start">
+                  <div className="flex flex-row gap-4 items-start">
+                    <ArtifactCloseButton />
+
+                    <div className="flex flex-col">
+                      <div className="font-medium">{artifact.title}</div>
+
+                      {isContentDirty ? (
+                        <div className="text-sm text-muted-foreground">
+                          Saving changes...
+                        </div>
+                      ) : document ? (
+                        <div className="text-sm text-muted-foreground">
+                          {`Updated ${formatDistance(
+                            new Date(document.createdAt),
+                            new Date(),
+                            {
+                              addSuffix: true,
+                            }
+                          )}`}
+                        </div>
+                      ) : (
+                        <div className="w-32 h-3 mt-2 bg-muted-foreground/20 rounded-md animate-pulse" />
+                      )}
+                    </div>
+                  </div>
+
+                  <ArtifactActions
+                    artifact={artifact}
+                    currentVersionIndex={currentVersionIndex}
+                    handleVersionChange={handleVersionChange}
+                    isCurrentVersion={isCurrentVersion}
+                    mode={mode}
+                    metadata={metadata}
+                    setMetadata={setMetadata}
+                  />
+                </div>
+
+                <div className="dark:bg-muted bg-background flex-1 overflow-y-auto !max-w-full p-4">
+                  <div className="min-h-[500px] h-full flex flex-col">
+                    <artifactDefinition.content
+                      title={artifact.title}
+                      content={
+                        isCurrentVersion
+                          ? artifact.content
+                          : getDocumentContentById(currentVersionIndex)
+                      }
+                      mode={mode}
+                      status={artifact.status}
+                      currentVersionIndex={currentVersionIndex}
+                      suggestions={[]}
+                      onSaveContent={saveContent}
+                      isInline={false}
+                      isCurrentVersion={isCurrentVersion}
+                      getDocumentContentById={getDocumentContentById}
+                      isLoading={isDocumentsFetching && !artifact.content}
+                      metadata={metadata}
+                      setMetadata={setMetadata}
+                    />
+
+                    <AnimatePresence>
+                      {isCurrentVersion && (
+                        <Toolbar
+                          isToolbarVisible={isToolbarVisible}
+                          setIsToolbarVisible={setIsToolbarVisible}
+                          append={append}
+                          isLoading={isLoading}
+                          stop={stop}
+                          setMessages={setMessages}
+                          artifactKind={artifact.kind}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {!isCurrentVersion && (
+                    <VersionFooter
+                      currentVersionIndex={currentVersionIndex}
+                      documents={documents}
+                      handleVersionChange={handleVersionChange}
+                    />
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </SidebarInset>
+          </SidebarProvider>
         </motion.div>
       )}
     </AnimatePresence>

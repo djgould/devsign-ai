@@ -5,6 +5,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { WebContainerProvider } from "@/components/web-container-provider";
 
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
+import { auth } from "./(auth)/auth";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://chat.vercel.ai"),
@@ -41,6 +43,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
   return (
     <html
       lang="en"
@@ -64,10 +67,12 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <WebContainerProvider>
-            <Toaster position="top-center" />
-            {children}
-          </WebContainerProvider>
+          <SessionProvider session={session}>
+            <WebContainerProvider>
+              <Toaster position="top-center" />
+              {children}
+            </WebContainerProvider>
+          </SessionProvider>
         </ThemeProvider>
       </body>
     </html>
