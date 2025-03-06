@@ -110,6 +110,7 @@ function PureArtifact({
 
   useEffect(() => {
     if (documents && documents.length > 0) {
+      console.log("documents", documents);
       const mostRecentDocument = documents.at(-1);
 
       if (mostRecentDocument) {
