@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { streamObject, DataStreamWriter } from "ai";
 import { myProvider } from "@/lib/ai/models";
-import { codePrompt, updateDocumentPrompt } from "@/lib/ai/prompts";
+import {
+  artifactsPrompt,
+  codePrompt,
+  updateDocumentPrompt,
+} from "@/lib/ai/prompts";
 import {
   createDocumentHandler,
   CreateDocumentCallbackProps,
@@ -19,7 +23,7 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
     // Initial draft content based on the title
     const { fullStream } = streamObject({
       model: myProvider.languageModel("artifact-model"),
-      system: codePrompt,
+      system: artifactsPrompt,
       prompt: title,
       schema: z.object({
         code: z.string(),
