@@ -54,34 +54,54 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
   }: UpdateDocumentCallbackProps) => {
     let draftContent = "";
 
-    const { fullStream } = streamObject({
-      model: myProvider.languageModel("artifacts-model"),
-      system: updateDocumentPrompt(document.content, "code"),
-      prompt: description,
-      schema: z.object({
-        code: z.string(),
-      }),
+    console.log("Starting document update:", {
+      documentId: document.id,
+      documentTitle: document.title,
+      description:
+        description.substring(0, 100) + (description.length > 100 ? "..." : ""),
     });
 
-    for await (const delta of fullStream) {
-      const { type } = delta;
+    try {
+      const { fullStream } = streamObject({
+        model: myProvider.languageModel("artifact-model"),
+        system: updateDocumentPrompt(document.content, "code"),
+        prompt: description,
+        schema: z.object({
+          code: z.string(),
+        }),
+      });
 
-      if (type === "object") {
-        const { object } = delta;
-        const { code } = object;
+      console.log("Stream object created, processing deltas...");
 
-        if (code) {
-          dataStream.writeData({
-            type: "code-delta",
-            content: code,
-            language: "javascript", // Always set to JavaScript
-          });
+      for await (const delta of fullStream) {
+        const { type } = delta;
 
-          draftContent = code;
+        if (type === "object") {
+          const { object } = delta;
+          const { code } = object;
+
+          if (code) {
+            console.log("Received code delta, length:", code.length);
+
+            dataStream.writeData({
+              type: "code-delta",
+              content: code,
+              language: "javascript", // Always set to JavaScript
+            });
+
+            draftContent = code;
+          }
         }
       }
-    }
 
-    return draftContent;
+      console.log(
+        "Document update completed successfully, content length:",
+        draftContent.length
+      );
+      return draftContent;
+    } catch (error) {
+      console.error("Error updating document:", error);
+      throw error;
+    }
   },
 });

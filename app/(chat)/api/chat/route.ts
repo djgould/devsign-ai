@@ -82,22 +82,49 @@ export async function POST(request: Request) {
         onFinish: async ({ response, reasoning }) => {
           if (session.user?.id) {
             try {
+              console.log(
+                "Original response messages count:",
+                response.messages.length
+              );
+
               const sanitizedResponseMessages = sanitizeResponseMessages({
                 messages: response.messages,
                 reasoning,
               });
 
-              await saveMessages({
-                messages: sanitizedResponseMessages.map((message) => {
-                  return {
-                    id: message.id,
-                    chatId: id,
-                    role: message.role,
-                    content: message.content,
-                    createdAt: new Date(),
-                  };
-                }),
-              });
+              console.log(
+                "Sanitized messages count:",
+                sanitizedResponseMessages.length
+              );
+
+              if (
+                sanitizedResponseMessages.length === 0 &&
+                response.messages.length > 0
+              ) {
+                console.log(
+                  "All messages were filtered out during sanitization. Original message sample:",
+                  JSON.stringify(response.messages[0], null, 2).substring(
+                    0,
+                    500
+                  ) + "..."
+                );
+              }
+
+              if (sanitizedResponseMessages.length > 0) {
+                await saveMessages({
+                  messages: sanitizedResponseMessages.map((message) => {
+                    return {
+                      id: message.id,
+                      chatId: id,
+                      role: message.role,
+                      content: message.content,
+                      createdAt: new Date(),
+                    };
+                  }),
+                });
+              } else {
+                console.log("No messages to save after sanitization");
+              }
             } catch (error) {
               console.error("Failed to save chat");
             }

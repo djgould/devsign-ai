@@ -64,7 +64,7 @@ export function Chat({
   // Step 2.2: Detect the latest artifact from messages
   useEffect(() => {
     if (artifact.documentId === "init" && messages) {
-      const artifactMessage = messages.find(
+      const artifactMessage = messages.findLast(
         (msg) =>
           msg.role === "assistant" &&
           msg.parts &&
