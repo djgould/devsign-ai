@@ -18,6 +18,42 @@ const MemoizedIframe = memo(
     (props, ref) => <iframe ref={ref} {...props} key="stable-iframe-key" />
   )
 );
+
+// Create a memoized container for the iframe that only depends on reactUrl
+const IframeContainer = memo(
+  ({ reactUrl }: { reactUrl?: string }) => {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Update iframe src when reactUrl changes
+    useEffect(() => {
+      if (iframeRef.current && reactUrl) {
+        try {
+          if (iframeRef.current.src !== reactUrl) {
+            iframeRef.current.src = reactUrl;
+          }
+        } catch (err) {
+          console.error("Error setting iframe src:", err);
+        }
+      }
+    }, [reactUrl]);
+
+    return (
+      <MemoizedIframe
+        ref={iframeRef}
+        title="React Component Preview"
+        className="w-full h-full border-none"
+        allow="clipboard-read; clipboard-write"
+        key="stable-iframe-key"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-presentation"
+      />
+    );
+  },
+  // Custom comparison function that only checks if reactUrl has changed
+  (prevProps, nextProps) => {
+    return prevProps.reactUrl === nextProps.reactUrl;
+  }
+);
+
 import { executeReactComponent } from "./hooks/useReactExecution";
 
 // Define simplified types to remove JavaScript execution specific types
@@ -164,8 +200,6 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       error: containerError,
     } = useWebContainer();
 
-    const iframeRef = useRef<HTMLIFrameElement>(null);
-
     // Track the WebContainer initialization stage
     const [containerStatus, setContainerStatus] =
       useState<string>("initializing");
@@ -229,6 +263,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     useEffect(() => {
       const handleExecuteCode = (event: CustomEvent) => {
         const { runId, content } = event.detail;
+        console.log("runId", runId);
+        console.log("content", content);
+        if (runId === runningCode?.runId && content === runningCode?.content)
+          return;
         setRunningCode({ runId, content });
       };
 
@@ -403,11 +441,6 @@ export const codeArtifact = new Artifact<"code", Metadata>({
               };
             });
 
-            // Set iframe src if available
-            if (iframeRef.current && result.url) {
-              iframeRef.current.src = result.url;
-            }
-
             setContainerStatus("preview ready");
           }
 
@@ -438,42 +471,33 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       executeCode();
     }, [runningCode, webcontainer, isLoading, containerError, setMetadata]);
 
-    // Add this effect to handle the iframe src properly
+    // Handle mode switching when reactUrl is first received
     useEffect(() => {
-      // When the reactUrl changes and we have an iframe reference
-      if (!metadata) return; // Don't do anything if metadata is null
+      // Only proceed if we have metadata and a reactUrl
+      if (!metadata || !metadata.reactUrl) return;
 
-      if (iframeRef.current && metadata.reactUrl) {
-        try {
-          // Set the src directly as a property
-          // Only set it if it's different from current src to avoid unnecessary reloads
-          if (iframeRef.current.src !== metadata.reactUrl) {
-            iframeRef.current.src = metadata.reactUrl;
-
-            // Only auto-switch to preview mode when initially getting a reactUrl
-            // This prevents overriding user's manual tab selection
-            if (!metadata.previousReactUrl && metadata.mode !== "preview") {
-              console.log(
-                "Initial React URL detected, switching to preview mode"
-              );
-              setMetadata((prev) => ({
-                ...prev,
-                mode: "preview",
-                previousReactUrl: metadata.reactUrl, // Track that we've seen this URL
-              }));
-            } else {
-              // Just update the previousReactUrl without changing mode
-              setMetadata((prev) => ({
-                ...prev,
-                previousReactUrl: metadata.reactUrl,
-              }));
-            }
-          }
-        } catch (err) {
-          console.error("Error setting iframe src:", err);
-        }
+      // Only auto-switch to preview mode when initially getting a reactUrl
+      // This prevents overriding user's manual tab selection
+      if (!metadata.previousReactUrl && metadata.mode !== "preview") {
+        console.log("Initial React URL detected, switching to preview mode");
+        setMetadata((prev) => ({
+          ...prev,
+          mode: "preview",
+          previousReactUrl: metadata.reactUrl, // Track that we've seen this URL
+        }));
+      } else if (metadata.reactUrl !== metadata.previousReactUrl) {
+        // Just update the previousReactUrl without changing mode
+        setMetadata((prev) => ({
+          ...prev,
+          previousReactUrl: metadata.reactUrl,
+        }));
       }
-    }, [metadata, metadata?.reactUrl, setMetadata]);
+    }, [
+      metadata?.reactUrl,
+      metadata?.previousReactUrl,
+      metadata?.mode,
+      setMetadata,
+    ]);
 
     // Render the appropriate content based on the mode
     const renderContentByMode = () => {
@@ -703,91 +727,15 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                   </div>
                 </div>
               )}
-              <MemoizedIframe
-                ref={iframeRef}
-                title="React Component Preview"
-                className="w-full h-full border-none"
-                allow="clipboard-read; clipboard-write"
-                key="stable-iframe-key"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-presentation"
-              />
+              <IframeContainer reactUrl={metadata?.reactUrl} />
             </div>
           </div>
         </div>
       );
     };
 
-    // Tab navigation functions
-    const switchToEditorMode = () => {
-      setMetadata((prev) => ({ ...prev, mode: "editor" }));
-    };
-
-    const switchToPreviewMode = () => {
-      setMetadata((prev) => ({ ...prev, mode: "preview" }));
-    };
-
     return (
       <div className="w-full h-full flex flex-col bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
-        {/* Tab navigation */}
-        <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 px-4">
-          <button
-            onClick={switchToEditorMode}
-            className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center ${
-              !metadata || metadata.mode !== "preview"
-                ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                : "text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
-            }`}
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-              />
-            </svg>
-            <span>Code Editor</span>
-          </button>
-
-          <button
-            onClick={switchToPreviewMode}
-            className={`px-4 py-3 text-sm font-medium transition-all duration-200 flex items-center ${
-              metadata && metadata.mode === "preview"
-                ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                : "text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
-            }`}
-            disabled={!metadata || !metadata.reactUrl}
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              ></path>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-              ></path>
-            </svg>
-            <span>Live Preview</span>
-          </button>
-        </div>
-
         <div className="flex-1 p-4">{renderContentByMode()}</div>
       </div>
     );
@@ -812,6 +760,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                 },
               ],
               mode: "editor",
+              isDisabled: true,
             }; // Initialize metadata if null
 
           return {
@@ -828,6 +777,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             mode: "editor",
           };
         });
+      },
+      isDisabled: ({ metadata }) => {
+        if (!metadata) return false;
+        return metadata.mode === "editor";
       },
     },
     {
@@ -865,14 +818,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             mode: "preview",
           };
         });
-
-        // Dispatch custom event to trigger React rendering
-        if (typeof window !== "undefined") {
-          const event = new CustomEvent("execute-code", {
-            detail: { runId, content },
-          });
-          window.dispatchEvent(event);
-        }
+      },
+      isDisabled: ({ metadata }) => {
+        if (!metadata) return false;
+        return metadata.mode === "preview";
       },
     },
     {

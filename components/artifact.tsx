@@ -33,7 +33,6 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useSession } from "next-auth/react";
 import { SidebarToggle } from "./sidebar-toggle";
-import isEqual from "fast-deep-equal";
 
 export const artifactDefinitions = [codeArtifact];
 export type ArtifactKind = (typeof artifactDefinitions)[number]["kind"];
@@ -294,23 +293,6 @@ function PureArtifact({
 
   const { data: session } = useSession();
 
-  // Use useRef to store the previous version of metadata for deep comparison
-  const prevMetadataRef = React.useRef(metadata);
-
-  // Memoize metadata using deep equality check to prevent unnecessary re-renders
-  const memoizedMetadata = React.useMemo(() => {
-    // Only update the reference if the deep contents have changed
-    if (!isEqual(prevMetadataRef.current, metadata)) {
-      prevMetadataRef.current = metadata;
-    }
-    return prevMetadataRef.current;
-  }, [metadata]);
-
-  const memoizedSetMetadata = React.useCallback(
-    (updater: any) => setMetadata(updater),
-    [setMetadata]
-  );
-
   return (
     <AnimatePresence>
       {artifact.isVisible && (
@@ -502,8 +484,8 @@ function PureArtifact({
                     handleVersionChange={handleVersionChange}
                     isCurrentVersion={isCurrentVersion}
                     mode={mode}
-                    metadata={memoizedMetadata}
-                    setMetadata={memoizedSetMetadata}
+                    metadata={metadata}
+                    setMetadata={setMetadata}
                   />
                 </div>
 
@@ -525,8 +507,8 @@ function PureArtifact({
                       isCurrentVersion={isCurrentVersion}
                       getDocumentContentById={getDocumentContentById}
                       isLoading={isDocumentsFetching && !artifact.content}
-                      metadata={memoizedMetadata}
-                      setMetadata={memoizedSetMetadata}
+                      metadata={metadata}
+                      setMetadata={setMetadata}
                     />
 
                     <AnimatePresence>
