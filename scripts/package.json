@@ -1,0 +1,7 @@
+{
+  "name": "template-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for building template files",
+  "type": "module",
+  "private": true
+} 

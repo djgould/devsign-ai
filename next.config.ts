@@ -4,6 +4,16 @@ const nextConfig: NextConfig = {
   experimental: {
     ppr: true,
   },
+  // Exclude react-template from the build process
+  transpilePackages: [],
+  webpack: (config, { isServer }) => {
+    // Simplify the configuration - just set the ignored pattern directly
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: /node_modules|react-template/,
+    };
+    return config;
+  },
   images: {
     remotePatterns: [
       {

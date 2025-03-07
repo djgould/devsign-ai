@@ -36,3 +36,11 @@ yarn-error.log*
 .vercel
 .vscode
 .env*.local
+
+# react-template specific
+react-template/dist/
+react-template/build/
+react-template/.cache/
+
+# Keep separate node_modules
+/react-template/node_modules/
