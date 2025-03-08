@@ -1,6 +1,7 @@
-@tailwind base;
+/* Remove Tailwind directives since we're using CDN version */
+/* @tailwind base;
 @tailwind components;
-@tailwind utilities;
+@tailwind utilities; */
 
 @import "./tailwind.theme.css";
 

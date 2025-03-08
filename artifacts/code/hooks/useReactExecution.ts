@@ -1,4 +1,5 @@
 import { reactTemplateFiles } from "../utils/templateFiles";
+import { TemplateFiles } from "../utils/templateTypes";
 import { isGoStackTrace, extractErrorMessage } from "../utils/errorHandling";
 
 // Define types for console output
@@ -52,46 +53,55 @@ export async function executeReactComponent(
     try {
       // Create root-level files first
       updateProgress("📁 Creating project structure...");
-      await webcontainer.mount({
-        "package.json": reactTemplateFiles["package.json"],
-        "vite.config.js": reactTemplateFiles["vite.config.js"],
-        "index.html": reactTemplateFiles["index.html"],
-        "tailwind.config.js": reactTemplateFiles["tailwind.config.js"],
-        "postcss.config.js": reactTemplateFiles["postcss.config.js"],
+
+      // Collect top-level files for mounting (those without slashes in their paths)
+      const rootFiles: Record<string, any> = {};
+      const pathsByDirectory: Record<string, string[]> = {};
+
+      // Organize all files by their directories
+      Object.keys(reactTemplateFiles as TemplateFiles).forEach((path) => {
+        if (!path.includes("/")) {
+          // Root level files
+          rootFiles[path] = (reactTemplateFiles as Record<string, any>)[path];
+        } else {
+          // Organize by directory for sequential creation
+          const directory = path.substring(0, path.lastIndexOf("/"));
+          if (!pathsByDirectory[directory]) {
+            pathsByDirectory[directory] = [];
+          }
+          pathsByDirectory[directory].push(path);
+        }
       });
 
+      // Mount all root level files at once
+      await webcontainer.mount(rootFiles);
       updateProgress("📦 Root files mounted");
 
-      // Explicitly create src directory
-      await webcontainer.fs.mkdir("src", { recursive: true });
+      // Create directories and write files for each directory path
+      for (const directory of Object.keys(pathsByDirectory)) {
+        // Create the directory structure
+        await webcontainer.fs.mkdir(directory, { recursive: true });
+        updateProgress(`📁 Created directory: ${directory}`);
 
-      // Add src files one by one
-      updateProgress("📄 Creating source files...");
-      await webcontainer.fs.writeFile(
-        "src/main.jsx",
-        reactTemplateFiles["src/main.jsx"].file.contents
-      );
-      await webcontainer.fs.writeFile(
-        "src/App.jsx",
-        reactTemplateFiles["src/App.jsx"].file.contents
-      );
-      await webcontainer.fs.writeFile(
-        "src/App.css",
-        reactTemplateFiles["src/App.css"].file.contents
-      );
-      await webcontainer.fs.writeFile(
-        "src/index.css",
-        reactTemplateFiles["src/index.css"].file.contents
-      );
+        // Write all files in this directory
+        const filePaths = pathsByDirectory[directory];
+        for (const filePath of filePaths) {
+          await webcontainer.fs.writeFile(
+            filePath,
+            (reactTemplateFiles as TemplateFiles)[filePath].file.contents
+          );
+        }
+        updateProgress(`📄 Created files in ${directory}`);
+      }
 
-      updateProgress("📦 Source files created successfully");
+      updateProgress("📦 All template files created successfully");
     } catch (error: any) {
       console.error("Error setting up file structure:", error);
       updateProgress(`🚫 Error setting up file structure: ${error.message}`);
       throw error;
     }
 
-    // Create components directory
+    // Create components directory if not already created
     try {
       await webcontainer.fs.mkdir("src/components", { recursive: true });
     } catch (error) {
@@ -103,7 +113,7 @@ export async function executeReactComponent(
     try {
       updateProgress(`✏️ Writing your ${componentName} component...`);
       await webcontainer.fs.writeFile(
-        `src/components/${componentName}.jsx`,
+        `src/components/${componentName}.tsx`,
         code
       );
       updateProgress(`✅ Created component: ${componentName}`);
@@ -150,7 +160,10 @@ export default App;
     updateProgress("📦 Installing dependencies (this may take a moment)...");
 
     try {
-      const installProcess = await webcontainer.spawn("npm", ["install"]);
+      const installProcess = await webcontainer.spawn("npm", [
+        "install",
+        "--force",
+      ]);
 
       // Log installation output
       const installLogCollector = new WritableStream({
@@ -244,6 +257,7 @@ export default App;
           write(chunk) {
             const output = chunk.toString();
             outputChunks.push(output);
+            console.log("[Dev]", output);
 
             // Format the output to make it more readable
             // Filter out Go stack traces and complex esbuild errors
