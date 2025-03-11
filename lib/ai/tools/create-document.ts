@@ -1,11 +1,11 @@
-import { generateUUID } from '@/lib/utils';
-import { DataStreamWriter, tool } from 'ai';
-import { z } from 'zod';
-import { Session } from 'next-auth';
+import { generateUUID } from "@/lib/utils";
+import { DataStreamWriter, tool } from "ai";
+import { z } from "zod";
+import { Session } from "next-auth";
 import {
   artifactKinds,
   documentHandlersByArtifactKind,
-} from '@/lib/artifacts/server';
+} from "@/lib/artifacts/server";
 
 interface CreateDocumentProps {
   session: Session;
@@ -15,37 +15,38 @@ interface CreateDocumentProps {
 export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
   tool({
     description:
-      'Create a document for a writing or content creation activities. This tool will call other functions that will generate the contents of the document based on the title and kind.',
+      "Create a document for a writing or content creation activities. This tool will call other functions that will generate the contents of the document based on the title and kind.",
     parameters: z.object({
       title: z.string(),
       kind: z.enum(artifactKinds),
     }),
     execute: async ({ title, kind }) => {
+      console.log("🔍 Creating document with title:", title);
       const id = generateUUID();
 
       dataStream.writeData({
-        type: 'kind',
+        type: "kind",
         content: kind,
       });
 
       dataStream.writeData({
-        type: 'id',
+        type: "id",
         content: id,
       });
 
       dataStream.writeData({
-        type: 'title',
+        type: "title",
         content: title,
       });
 
       dataStream.writeData({
-        type: 'clear',
-        content: '',
+        type: "clear",
+        content: "",
       });
 
       const documentHandler = documentHandlersByArtifactKind.find(
         (documentHandlerByArtifactKind) =>
-          documentHandlerByArtifactKind.kind === kind,
+          documentHandlerByArtifactKind.kind === kind
       );
 
       if (!documentHandler) {
@@ -59,13 +60,13 @@ export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
         session,
       });
 
-      dataStream.writeData({ type: 'finish', content: '' });
+      dataStream.writeData({ type: "finish", content: "" });
 
       return {
         id,
         title,
         kind,
-        content: 'A document was created and is now visible to the user.',
+        content: "A document was created and is now visible to the user.",
       };
     },
   });

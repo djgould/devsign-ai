@@ -33,26 +33,41 @@ export interface DocumentHandler<T = ArtifactKind> {
   onUpdateDocument: (args: UpdateDocumentCallbackProps) => Promise<void>;
 }
 
+export interface DocumentResult {
+  content: string;
+  refinedPrompt?: string;
+}
+
 export function createDocumentHandler<T extends ArtifactKind>(config: {
   kind: T;
-  onCreateDocument: (params: CreateDocumentCallbackProps) => Promise<string>;
-  onUpdateDocument: (params: UpdateDocumentCallbackProps) => Promise<string>;
+  onCreateDocument: (
+    params: CreateDocumentCallbackProps
+  ) => Promise<string | DocumentResult>;
+  onUpdateDocument: (
+    params: UpdateDocumentCallbackProps
+  ) => Promise<string | DocumentResult>;
 }): DocumentHandler<T> {
   return {
     kind: config.kind,
     onCreateDocument: async (args: CreateDocumentCallbackProps) => {
-      const draftContent = await config.onCreateDocument({
+      const result = await config.onCreateDocument({
         id: args.id,
         title: args.title,
         dataStream: args.dataStream,
         session: args.session,
       });
 
+      // Handle both string and DocumentResult return types
+      const content = typeof result === "string" ? result : result.content;
+      const refinedPrompt =
+        typeof result === "string" ? undefined : result.refinedPrompt;
+
       if (args.session?.user?.id) {
         await saveDocument({
           id: args.id,
           title: args.title,
-          content: draftContent,
+          content,
+          refinedPrompt,
           kind: config.kind,
           userId: args.session.user.id,
         });
@@ -61,18 +76,24 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
       return;
     },
     onUpdateDocument: async (args: UpdateDocumentCallbackProps) => {
-      const draftContent = await config.onUpdateDocument({
+      const result = await config.onUpdateDocument({
         document: args.document,
         description: args.description,
         dataStream: args.dataStream,
         session: args.session,
       });
 
+      // Handle both string and DocumentResult return types
+      const content = typeof result === "string" ? result : result.content;
+      const refinedPrompt =
+        typeof result === "string" ? undefined : result.refinedPrompt;
+
       if (args.session?.user?.id) {
         await saveDocument({
           id: args.document.id,
           title: args.document.title,
-          content: draftContent,
+          content,
+          refinedPrompt,
           kind: config.kind,
           userId: args.session.user.id,
         });

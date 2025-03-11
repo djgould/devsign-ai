@@ -72,6 +72,7 @@ export const document = pgTable(
     createdAt: timestamp("createdAt").notNull(),
     title: text("title").notNull(),
     content: text("content"),
+    refinedPrompt: text("refined_prompt"), // Store the refined prompt for better traceability
     kind: varchar("text", { enum: ["code"] })
       .notNull()
       .default("code"),

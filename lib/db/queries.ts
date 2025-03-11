@@ -177,12 +177,14 @@ export async function saveDocument({
   kind,
   content,
   userId,
+  refinedPrompt,
 }: {
   id: string;
   title: string;
   kind: ArtifactKind;
   content: string;
   userId: string;
+  refinedPrompt?: string;
 }) {
   try {
     return await db.insert(document).values({
@@ -191,10 +193,11 @@ export async function saveDocument({
       kind,
       content,
       userId,
+      refinedPrompt,
       createdAt: new Date(),
     });
   } catch (error) {
-    console.error("Failed to save document in database");
+    console.error("Failed to save document in database", error);
     throw error;
   }
 }

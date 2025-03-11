@@ -1,4 +1,5 @@
 import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { fireworks } from "@ai-sdk/fireworks";
 import {
   customProvider,
@@ -17,7 +18,7 @@ export const myProvider = customProvider({
       middleware: extractReasoningMiddleware({ tagName: "think" }),
     }),
     "title-model": openai("gpt-4o-2024-08-06"),
-    "artifact-model": openai("gpt-4o-mini-2024-07-18"),
+    "artifact-model": openai("gpt-4o-2024-08-06"),
   },
   imageModels: {
     "small-model": openai.image("dall-e-2"),
