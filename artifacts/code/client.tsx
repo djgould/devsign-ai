@@ -9,8 +9,15 @@ import {
 } from "@/components/icons";
 import { toast } from "sonner";
 import { generateUUID } from "@/lib/utils";
-import { useWebContainer } from "@/components/web-container-provider";
+import {
+  useWebContainer,
+  useWebContainerState,
+} from "@/components/web-container-provider";
 import React, { useEffect, useState, useRef, memo, forwardRef } from "react";
+import {
+  executeReactComponent,
+  updateReactComponent,
+} from "./hooks/useReactExecution";
 
 // Create a memoized iframe component to prevent re-renders
 const MemoizedIframe = memo(
@@ -54,34 +61,39 @@ const IframeContainer = memo(
   }
 );
 
-import { executeReactComponent } from "./hooks/useReactExecution";
-
-// Define simplified types to remove JavaScript execution specific types
-interface ConsoleOutputContent {
+// Define types for the code artifact metadata
+export interface ConsoleOutputContent {
   type: string;
   value: string;
 }
 
-interface ConsoleOutput {
+export interface ConsoleOutput {
   id: string;
   contents: Array<ConsoleOutputContent>;
   status: "in_progress" | "completed" | "failed";
 }
 
-interface Metadata {
+/**
+ * Metadata for the code artifact
+ * This defines the structure of the metadata specific to code artifacts,
+ * which includes information about console outputs and editor mode.
+ * Note: reactUrl is maintained in webcontainerState as the single source of truth,
+ * not in this metadata.
+ */
+export interface CodeArtifactMetadata {
+  /** Console outputs from executions */
   outputs: Array<ConsoleOutput>;
-  reactUrl?: string;
-  previousReactUrl?: string;
+  /** Current viewing mode: editor or preview */
   mode?: "editor" | "preview";
 }
 
-export const codeArtifact = new Artifact<"code", Metadata>({
+export const codeArtifact = new Artifact<"code", CodeArtifactMetadata>({
   kind: "code",
   description:
     "Useful for code generation; React components can be rendered in real-time.",
   initialize: async ({ setMetadata }) => {
     // Initialize with default metadata
-    setMetadata((currentMetadata) => ({
+    setMetadata((currentMetadata: CodeArtifactMetadata | undefined) => ({
       ...(currentMetadata || {}),
       outputs: [],
       mode: "preview", // Default to preview mode for better UX
@@ -111,6 +123,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
     }
   },
   content: ({ metadata, setMetadata, ...props }) => {
+    // Get WebContainer state
+    const { state: webcontainerState, setState: setWebcontainerState } =
+      useWebContainerState();
+
     // Add animation styles
     useEffect(() => {
       // Add CSS animation for progress bar and loader
@@ -235,15 +251,15 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       // Only auto-execute if:
       // 1. WebContainer is ready
       // 2. We have content to run
-      // 3. No preview URL exists yet
+      // 3. No preview URL exists yet (check global state)
       // 4. We're not already running code
       if (
         webcontainer &&
         !isLoading &&
         !containerError &&
         props.content &&
+        !webcontainerState.reactUrl && // Check only global state
         metadata &&
-        !metadata.reactUrl &&
         !runningCode
       ) {
         const autoRunId = generateUUID();
@@ -254,8 +270,8 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       isLoading,
       containerError,
       props.content,
+      webcontainerState.reactUrl, // Depend only on global state
       metadata,
-      metadata?.reactUrl,
       runningCode,
     ]);
 
@@ -295,7 +311,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           }
 
           if (containerError || !webcontainer) {
-            setMetadata((metadata) => {
+            setMetadata((metadata: CodeArtifactMetadata | undefined) => {
               if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
 
               return {
@@ -322,7 +338,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           }
 
           // Execute using React renderer
-          setMetadata((metadata) => {
+          setMetadata((metadata: CodeArtifactMetadata | undefined) => {
             if (!metadata) return { outputs: [], mode: "preview" }; // Initialize metadata if null
 
             return {
@@ -351,7 +367,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
           // Add progress updates
           const updateProgressStatus = (status: string) => {
             setContainerStatus(status);
-            setMetadata((metadata) => {
+            setMetadata((metadata: CodeArtifactMetadata | undefined) => {
               if (!metadata)
                 return {
                   outputs: [
@@ -385,15 +401,28 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             });
           };
 
-          const result = await executeReactComponent(
-            runningCode.content,
-            webcontainer,
-            updateProgressStatus
-          );
+          // Check if we have a URL in global state - if so, we can just update the component instead of re-initializing
+          const hasExistingUrl =
+            webcontainerState.reactUrl &&
+            webcontainerState.reactUrl.trim() !== "";
+
+          // Choose whether to execute or update based on existing URL
+          const result = hasExistingUrl
+            ? await updateReactComponent(
+                runningCode.content,
+                webcontainer,
+                updateProgressStatus,
+                webcontainerState.reactUrl || undefined // Ensure it's string | undefined, not null
+              )
+            : await executeReactComponent(
+                runningCode.content,
+                webcontainer,
+                updateProgressStatus
+              );
 
           if (result.error) {
             setContainerStatus("error");
-            setMetadata((metadata) => {
+            setMetadata((metadata: CodeArtifactMetadata | undefined) => {
               if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
 
               return {
@@ -411,7 +440,8 @@ export const codeArtifact = new Artifact<"code", Metadata>({
               };
             });
           } else {
-            setMetadata((metadata) => {
+            // Update document-specific metadata (only outputs and mode)
+            setMetadata((metadata: CodeArtifactMetadata | undefined) => {
               if (!metadata)
                 return {
                   outputs: [
@@ -422,12 +452,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                     },
                   ],
                   mode: "preview",
-                  reactUrl: result.url,
                 }; // Initialize metadata if null
 
               return {
                 ...metadata,
-                reactUrl: result.url,
                 outputs: [
                   ...metadata.outputs.filter(
                     (output) => output.id !== runningCode.runId
@@ -441,13 +469,21 @@ export const codeArtifact = new Artifact<"code", Metadata>({
               };
             });
 
+            // Update global WebContainer state
+            setWebcontainerState((state) => ({
+              ...state,
+              reactUrl: result.url,
+              isServerRunning: true,
+              isDependenciesInstalled: true,
+            }));
+
             setContainerStatus("preview ready");
           }
 
           // Clear running state
           setRunningCode(null);
         } catch (error: any) {
-          setMetadata((metadata) => {
+          setMetadata((metadata: CodeArtifactMetadata | undefined) => {
             if (!metadata) return { outputs: [], mode: "editor" }; // Initialize metadata if null
 
             return {
@@ -471,33 +507,20 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       executeCode();
     }, [runningCode, webcontainer, isLoading, containerError, setMetadata]);
 
-    // Handle mode switching when reactUrl is first received
+    // Handle mode switching when WebContainer has a valid URL
     useEffect(() => {
-      // Only proceed if we have metadata and a reactUrl
-      if (!metadata || !metadata.reactUrl) return;
+      // Only proceed if we have metadata
+      if (!metadata) return;
 
-      // Only auto-switch to preview mode when initially getting a reactUrl
-      // This prevents overriding user's manual tab selection
-      if (!metadata.previousReactUrl && metadata.mode !== "preview") {
-        console.log("Initial React URL detected, switching to preview mode");
+      // Auto-switch to preview mode when webcontainerState has a URL and preview mode is not already set
+      if (webcontainerState.reactUrl && metadata.mode !== "preview") {
+        console.log("WebContainer URL detected, switching to preview mode");
         setMetadata((prev) => ({
           ...prev,
           mode: "preview",
-          previousReactUrl: metadata.reactUrl, // Track that we've seen this URL
-        }));
-      } else if (metadata.reactUrl !== metadata.previousReactUrl) {
-        // Just update the previousReactUrl without changing mode
-        setMetadata((prev) => ({
-          ...prev,
-          previousReactUrl: metadata.reactUrl,
         }));
       }
-    }, [
-      metadata?.reactUrl,
-      metadata?.previousReactUrl,
-      metadata?.mode,
-      setMetadata,
-    ]);
+    }, [webcontainerState.reactUrl, metadata, metadata?.mode, setMetadata]);
 
     // Render the appropriate content based on the mode
     const renderContentByMode = () => {
@@ -542,7 +565,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             }}
           >
             <div className="h-full w-full border border-border rounded-md overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-              {!metadata?.reactUrl && (
+              {!webcontainerState.reactUrl && (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center p-8 max-w-md w-full fade-in-up">
                     {/* Loading/No Preview State */}
@@ -727,7 +750,14 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                   </div>
                 </div>
               )}
-              <IframeContainer reactUrl={metadata?.reactUrl} />
+              {/* 
+                Using only the global webcontainerState.reactUrl because that's the single 
+                source of truth for the URL. This prevents issues when switching between documents
+                and ensures we don't lose the URL when component state changes.
+              */}
+              <IframeContainer
+                reactUrl={webcontainerState.reactUrl || undefined}
+              />
             </div>
           </div>
         </div>
@@ -749,7 +779,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         const runId = generateUUID();
 
         // Set status for the new run
-        setMetadata((metadata) => {
+        setMetadata((metadata: CodeArtifactMetadata | undefined) => {
           if (!metadata)
             return {
               outputs: [
@@ -773,7 +803,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
                 status: "in_progress",
               },
             ],
-            // Set mode to preview in advance
+            // Set mode to editor
             mode: "editor",
           };
         });
@@ -791,7 +821,7 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         const runId = generateUUID();
 
         // Set status for the new run
-        setMetadata((metadata) => {
+        setMetadata((metadata: CodeArtifactMetadata | undefined) => {
           if (!metadata)
             return {
               outputs: [

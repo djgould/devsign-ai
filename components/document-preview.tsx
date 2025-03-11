@@ -148,23 +148,44 @@ const PureHitboxLayer = ({
     (event: MouseEvent<HTMLElement>) => {
       const boundingBox = event.currentTarget.getBoundingClientRect();
 
-      setArtifact((artifact) =>
-        artifact.status === "streaming"
-          ? { ...artifact, isVisible: true }
-          : {
-              ...artifact,
-              title: result.title,
-              documentId: result.id,
-              kind: result.kind,
-              isVisible: true,
-              boundingBox: {
-                left: boundingBox.x,
-                top: boundingBox.y,
-                width: boundingBox.width,
-                height: boundingBox.height,
-              },
-            }
-      );
+      setArtifact((artifact) => {
+        // If the artifact is streaming, just make it visible without changing anything else
+        if (artifact.status === "streaming") {
+          return { ...artifact, isVisible: true };
+        }
+
+        // If we're clicking on the same document that's already open, just make it visible
+        if (artifact.documentId === result.id) {
+          return {
+            ...artifact,
+            isVisible: true,
+            boundingBox: {
+              left: boundingBox.x,
+              top: boundingBox.y,
+              width: boundingBox.width,
+              height: boundingBox.height,
+            },
+          };
+        }
+
+        // When switching to a different document, we only need to update document-specific fields
+        // while preserving all other state to avoid WebContainer remounting
+        return {
+          ...artifact, // Start with all existing properties to preserve WebContainer state
+          title: result.title,
+          documentId: result.id,
+          kind: result.kind,
+          isVisible: true,
+          boundingBox: {
+            left: boundingBox.x,
+            top: boundingBox.y,
+            width: boundingBox.width,
+            height: boundingBox.height,
+          },
+          // We maintain artifact.content as it is until we load the content for this specific document
+          // This way we don't reset the WebContainer unnecessarily
+        };
+      });
     },
     [setArtifact, result]
   );

@@ -417,9 +417,121 @@ export default App;
   }
 }
 
+// Function to update a React component in an existing WebContainer
+export async function updateReactComponent(
+  code: string,
+  webcontainer: any,
+  onProgress?: (status: string) => void,
+  existingUrl?: string
+): Promise<{
+  url: string;
+  outputContent: Array<ConsoleOutputContent>;
+  error?: string;
+}> {
+  const outputContent: Array<ConsoleOutputContent> = [];
+
+  // Helper function to update both output content and progress status
+  const updateProgress = (message: string) => {
+    outputContent.push({
+      type: "text",
+      value: message,
+    });
+
+    if (onProgress) {
+      onProgress(message);
+    }
+  };
+
+  try {
+    if (!webcontainer) {
+      throw new Error("WebContainer is not available");
+    }
+
+    updateProgress("🔄 Updating existing React component...");
+
+    // Extract component name from the code
+    let componentName = "MyComponent";
+    const componentNameMatch = code.match(
+      /function\s+(\w+)|class\s+(\w+)|const\s+(\w+)\s*=/
+    );
+    if (componentNameMatch) {
+      componentName =
+        componentNameMatch[1] || componentNameMatch[2] || componentNameMatch[3];
+    }
+
+    // Create components directory if not already created
+    try {
+      await webcontainer.fs.mkdir("src/components", { recursive: true });
+    } catch (error) {
+      console.error("Error creating components directory:", error);
+      // Directory might already exist, ignore
+    }
+
+    // Write the component to a file
+    try {
+      updateProgress(`✏️ Writing your ${componentName} component...`);
+      await webcontainer.fs.writeFile(
+        `src/components/${componentName}.tsx`,
+        code
+      );
+      updateProgress(`✅ Updated component: ${componentName}`);
+    } catch (error: any) {
+      console.error("Error writing component file:", error);
+      updateProgress(`🚫 Error writing component: ${error.message}`);
+      throw error;
+    }
+
+    // Update App.jsx to import and use the component
+    const appCode = `
+import { useState } from 'react';
+import './App.css';
+import ${componentName} from './components/${componentName}';
+
+function App() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+      <div className="w-full max-w-3xl mb-8">
+        <${componentName} />
+      </div>
+      
+      <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
+        <p>React component rendered in WebContainer</p>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+`;
+
+    try {
+      updateProgress("📝 Updating application configuration...");
+      await webcontainer.fs.writeFile("src/App.jsx", appCode);
+      updateProgress("📝 Updated App.jsx to use your component");
+    } catch (error: any) {
+      console.error("Error updating App.jsx:", error);
+      updateProgress(`🚫 Error updating App.jsx: ${error.message}`);
+      throw error;
+    }
+
+    // Use the existing URL as we're just updating files in an already running server
+    // No need to determine the URL again since the server is already running
+    const serverUrl = existingUrl || "http://localhost:3000";
+
+    updateProgress("✨ Component updated and ready for preview!");
+    return { url: serverUrl, outputContent };
+  } catch (error: any) {
+    const errorMsg = error.message || "Error updating React component";
+    console.error("React update error:", error);
+    updateProgress(`🚫 Error: ${errorMsg}`);
+    return { url: "", outputContent, error: errorMsg };
+  }
+}
+
 // Create a hook to manage React execution
 export function useReactExecution() {
   return {
     executeReactComponent,
+    updateReactComponent,
   };
 }

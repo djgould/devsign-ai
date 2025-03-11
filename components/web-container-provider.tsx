@@ -9,14 +9,45 @@ interface WebContainerContextType {
   error: string | null;
 }
 
+// Define WebContainer state interface
+interface WebContainerState {
+  webcontainer: WebContainer | null;
+  isLoading: boolean;
+  error: string | null;
+  reactUrl: string | null;
+  isServerRunning: boolean;
+  isDependenciesInstalled: boolean;
+}
+
 const WebContainerContext = createContext<WebContainerContextType>({
   webcontainer: null,
   isLoading: true,
   error: null,
 });
 
+// Create a new context for WebContainer state
+const WebContainerStateContext = createContext<{
+  state: WebContainerState;
+  setState: (updater: (state: WebContainerState) => WebContainerState) => void;
+}>({
+  state: {
+    webcontainer: null,
+    isLoading: true,
+    error: null,
+    reactUrl: null,
+    isServerRunning: false,
+    isDependenciesInstalled: false,
+  },
+  setState: () => {},
+});
+
 export function useWebContainer() {
   return useContext(WebContainerContext);
+}
+
+// Add a hook to access WebContainer state
+export function useWebContainerState() {
+  return useContext(WebContainerStateContext);
 }
 
 export function WebContainerProvider({
@@ -27,6 +58,28 @@ export function WebContainerProvider({
   const [webcontainer, setWebcontainer] = useState<WebContainer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Add WebContainer state
+  const [webcontainerState, setWebcontainerState] = useState<WebContainerState>(
+    {
+      webcontainer: null,
+      isLoading: true,
+      error: null,
+      reactUrl: null,
+      isServerRunning: false,
+      isDependenciesInstalled: false,
+    }
+  );
+
+  // Update the state when WebContainer changes
+  useEffect(() => {
+    setWebcontainerState((state) => ({
+      ...state,
+      webcontainer,
+      isLoading,
+      error,
+    }));
+  }, [webcontainer, isLoading, error]);
 
   useEffect(() => {
     let isMounted = true;
@@ -99,12 +152,15 @@ export function WebContainerProvider({
       }
     }
 
-    bootWebContainer();
+    // Only boot the WebContainer if we don't already have one
+    if (!webcontainer) {
+      bootWebContainer();
+    }
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [webcontainer]); // Depend on webcontainer to avoid rebooting if already exists
 
   return (
     <WebContainerContext.Provider
@@ -114,7 +170,14 @@ export function WebContainerProvider({
         error,
       }}
     >
-      {children}
+      <WebContainerStateContext.Provider
+        value={{
+          state: webcontainerState,
+          setState: setWebcontainerState,
+        }}
+      >
+        {children}
+      </WebContainerStateContext.Provider>
     </WebContainerContext.Provider>
   );
 }
