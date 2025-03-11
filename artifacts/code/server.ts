@@ -5,6 +5,7 @@ import {
   artifactsPrompt,
   codePrompt,
   updateDocumentPrompt,
+  createDocumentPrompt,
 } from "@/lib/ai/prompts";
 import { refinePrompt } from "@/lib/ai/promptRefiner";
 import {
@@ -39,10 +40,11 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
     // Generate code based on the refined prompt
     const { fullStream } = streamObject({
       model: myProvider.languageModel("artifact-model"),
-      system: artifactsPrompt,
+      system: createDocumentPrompt("code"),
       prompt: refinedPrompt,
       schema: z.object({
-        code: z.string(),
+        code: z.string().optional(),
+        response: z.string().optional(),
       }),
     });
 
@@ -60,17 +62,24 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
 
       if (type === "object") {
         const { object } = delta;
-        const { code } = object;
+        let codeContent = "";
 
-        if (code) {
-          console.log("Received code delta, length:", code.length);
+        // Handle both direct code and JSON with response field
+        if (object.code) {
+          codeContent = object.code;
+        } else if (object.response) {
+          codeContent = object.response;
+        }
+
+        if (codeContent) {
+          console.log("Received code delta, length:", codeContent.length);
           dataStream.writeData({
             type: "code-delta",
-            content: code,
+            content: codeContent,
             language: "javascript", // Always set to JavaScript
           });
 
-          draftContent = code;
+          draftContent = codeContent;
         }
       }
     }
@@ -116,7 +125,8 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
         system: updateDocumentPrompt(document.content, "code"),
         prompt: refinedDescription,
         schema: z.object({
-          code: z.string(),
+          code: z.string().optional(),
+          response: z.string().optional(),
         }),
       });
 
@@ -127,18 +137,25 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
 
         if (type === "object") {
           const { object } = delta;
-          const { code } = object;
+          let codeContent = "";
 
-          if (code) {
-            console.log("Received code delta, length:", code.length);
+          // Handle both direct code and JSON with response field
+          if (object.code) {
+            codeContent = object.code;
+          } else if (object.response) {
+            codeContent = object.response;
+          }
+
+          if (codeContent) {
+            console.log("Received code delta, length:", codeContent.length);
 
             dataStream.writeData({
               type: "code-delta",
-              content: code,
+              content: codeContent,
               language: "javascript", // Always set to JavaScript
             });
 
-            draftContent = code;
+            draftContent = codeContent;
           }
         }
       }

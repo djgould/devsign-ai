@@ -1,7 +1,14 @@
 import { ArtifactKind } from "@/components/artifact";
 
-export const artifactsPrompt = `
+export const artifactsImplementationPrompt = `
 Artifacts is a special user interface mode where you create high-quality React interfaces displayed on the right side of the screen, while the conversation continues on the left side. When creating or updating interfaces, changes are reflected in real-time and visible to the user.
+
+IMPORTANT RESPONSE FORMAT:
+- ALWAYS RETURN CODE DIRECTLY, never wrapped in JSON or any other format
+- DO NOT include any explanatory text before or after the code
+- DO NOT use markdown code blocks
+- Just return the raw code that should be in the file
+- If you need to explain something, use code comments
 
 IMPORTANT: ALWAYS CREATE REACT FILES ONLY. Every artifact must be a valid React component file (.jsx or .tsx) styled with Tailwind CSS. Never create plain HTML, CSS, or non-React JavaScript files as artifacts.
 
@@ -32,27 +39,6 @@ When designing interfaces:
 4. Include thoughtful micro-interactions and animations where appropriate
 5. Maintain consistent styling with careful attention to design systems
 
-**When to use \`createDocument\`:**
-- When asked to create a React interface or component
-- For substantial UI code (components, pages, etc.)
-- When explicitly requested to create a UI mockup or prototype
-
-**When NOT to use \`createDocument\`:**
-- For informational/explanatory content
-- For conversational responses
-- When asked to keep it in chat
-
-**Using \`updateDocument\`:**
-- Default to full component rewrites for major changes
-- Use targeted updates for specific component modifications
-- Follow user instructions for which parts of the interface to modify
-- Use shadcn/ui components from the components/ui directory
-
-**When NOT to use \`updateDocument\`:**
-- Immediately after creating a document
-
-Always specify the language as JSX or TSX in the backticks when writing code, e.g. \`\`\`jsx\`code here\`\`\` or \`\`\`tsx\`code here\`\`\`.
-
 All artifacts must include:
 1. A default exported React component
 2. Proper import statements (React, any needed hooks, etc.)
@@ -81,9 +67,35 @@ const MyComponent = () => {
 
 export default MyComponent;
 \`\`\`
+`;
+
+export const artifactsUsagePrompt = `
+You can create and update visual interfaces while chatting with the user using Artifacts.
+
+Artifacts are components that appear on the right side of the conversation. They are created using the createDocument function and can be updated using the updateDocument function.
+
+**When to use \`createDocument\`:**
+- When asked to create a React interface or component
+- For substantial UI code (components, pages, etc.)
+- When explicitly requested to create a UI mockup or prototype
+
+**When NOT to use \`createDocument\`:**
+- For informational/explanatory content
+- For conversational responses
+- When asked to keep it in chat
+
+**Using \`updateDocument\`:**
+- Default to full component rewrites for major changes
+- Use targeted updates for specific component modifications
+- Follow user instructions for which parts of the interface to modify
+
+**When NOT to use \`updateDocument\`:**
+- Immediately after creating a document (wait for user feedback first)
 
 DO NOT UPDATE DOCUMENTS IMMEDIATELY AFTER CREATING THEM. WAIT FOR USER FEEDBACK OR REQUEST TO UPDATE IT.
 `;
+
+export const artifactsPrompt = artifactsUsagePrompt;
 
 export const regularPrompt =
   "You are a friendly assistant! Keep your responses concise and helpful.";
@@ -96,7 +108,7 @@ export const systemPrompt = ({
   if (selectedChatModel === "chat-model-reasoning") {
     return regularPrompt;
   } else {
-    return `${regularPrompt}\n\n${artifactsPrompt}`;
+    return `${regularPrompt}\n\n${artifactsUsagePrompt}`;
   }
 };
 
@@ -140,7 +152,16 @@ export const updateDocumentPrompt = (
   currentContent: string | null,
   type: ArtifactKind
 ) => `\
+${artifactsImplementationPrompt}
+
 Improve the following React component based on the given prompt. Always maintain a valid React component structure.
+
+IMPORTANT RESPONSE FORMAT:
+- ALWAYS RETURN CODE DIRECTLY, never wrapped in JSON or any other format
+- DO NOT include any explanatory text before or after the code
+- DO NOT use markdown code blocks
+- Just return the raw code that should be in the file
+- If you need to explain something, use code comments
 
 The output must be complete, working JSX/TSX code with:
 1. All necessary import statements
@@ -193,4 +214,11 @@ Transform the prompt into a comprehensive specification that focuses on:
 5. Maintain the core intent of the original prompt while enhancing it with these UX considerations
 
 Return an improved version of the prompt that will result in a high-quality interface with elegant visuals and exceptional usability.
+`;
+
+export const createDocumentPrompt = (type: ArtifactKind) => `\
+${artifactsImplementationPrompt}
+
+Create a complete, working React component based on the provided prompt.
+
 `;

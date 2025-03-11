@@ -6,6 +6,7 @@ import {
   extractReasoningMiddleware,
   wrapLanguageModel,
 } from "ai";
+import { artifactsImplementationPrompt } from "./prompts";
 
 export const DEFAULT_CHAT_MODEL: string = "chat-model-small";
 
@@ -18,7 +19,7 @@ export const myProvider = customProvider({
       middleware: extractReasoningMiddleware({ tagName: "think" }),
     }),
     "title-model": openai("gpt-4o-2024-08-06"),
-    "artifact-model": openai("gpt-4o-2024-08-06"),
+    "artifact-model": anthropic("claude-3-7-sonnet-20250219"),
   },
   imageModels: {
     "small-model": openai.image("dall-e-2"),
